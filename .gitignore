@@ -1,0 +1,17 @@
+# Environment variables
+.env
+
+# Node.js
+node_modules/
+
+# TypeScript
+*.js
+*.js.map
+*.d.ts
+
+# Build artifacts
+function.zip
+m2-bot-example-v*.tgz
+
+# OS generated files
+.DS_Store
