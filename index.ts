@@ -170,7 +170,7 @@ const greetingRegex = /^(привет|здравствуй|добрый день
 bot.hears(greetingRegex, async (ctx) => {
   console.log('Received event:', JSON.stringify(ctx));
   const businessConnectionId = ctx.businessConnectionId || ctx.message?.business_connection_id;
-  if (businessConnectionId && ctx.chat.id === ctx.from?.id) {
+  if (businessConnectionId) {
     const now = new Date();
     const hour = now.getHours();
     let timeBasedGreeting = '';
@@ -180,7 +180,10 @@ bot.hears(greetingRegex, async (ctx) => {
     else timeBasedGreeting = 'Доброй ночи';
 
     let userName = '';
-    if (ctx.from?.first_name && /^[а-яА-ЯёЁ\s]+$/.test(ctx.from.first_name)) {
+    // Проверяем имя, добавляем с вероятностью 50% и если нет пробелов
+    if (ctx.from?.first_name && 
+        /^[а-яА-ЯёЁ]+$/.test(ctx.from.first_name) && // Только кириллица, без пробелов
+        Math.random() < 0.5) { // Вероятность 50%
       userName = `, ${ctx.from.first_name}`;
     }
 
