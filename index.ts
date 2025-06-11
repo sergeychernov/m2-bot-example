@@ -1,18 +1,6 @@
 import { Bot, InlineKeyboard } from 'grammy'; // webhookCallback удален, так как не используется напрямую в handler
 import fs from 'fs';
 import path from 'path';
-// Удалите импорт node-fetch полностью
-// import fetch from 'node-fetch';
-
-// Используйте глобальный fetch (доступен в Node.js 18+)
-// Никаких дополнительных импортов не требуется
-
-// Прямые импорты для Yandex Text Generation API
-// Remove this incorrect import:
-// import { 
-//     Message as GPTMessage, 
-//     TextGenerationRequest 
-// } from '@yandex-cloud/nodejs-sdk/dist/generated/yandex/cloud/ai/foundation_models/v1/text_generation';
 
 const botToken = process.env.BOT_TOKEN;
 if (!botToken) {
@@ -46,11 +34,6 @@ async function initializeBot() {
     // throw error; // Раскомментируйте, если инициализация критична
   }
 }
-
-// Вызываем инициализацию один раз (например, при первом импорте модуля)
-// В серверной среде это может выполниться при "холодном старте"
-// initializeBot(); // Вызов здесь может быть проблематичен, если top-level await не поддерживается или вызывает проблемы
-// Лучше вызывать его в начале handler, если это первый вызов.
 
 interface Client { 
   id: string;
@@ -227,16 +210,15 @@ bot.hears(yandexGptRegex, async (ctx) => {
         const prompt = ctx.match[1].trim();
         if (prompt) {
             try {
-                const yandexFolderID = process.env.YC_FOLDER_ID || 'YOUR_YANDEX_FOLDER_ID';
 
-                if (!yandexFolderID || yandexFolderID === 'YOUR_YANDEX_FOLDER_ID') {
+                if (!FOLDER_ID) {
                     console.error('Yandex Folder ID is not configured.');
                     await ctx.reply('Ошибка конфигурации: Yandex Folder ID не настроен.');
                     return;
                 }
 
                 // Вызываем функцию с двумя параметрами (убираем iamToken)
-                const gptResponse = await getYandexGPTResponse(prompt, yandexFolderID);
+                const gptResponse = await getYandexGPTResponse(prompt);
 
                 if (gptResponse) {
                     await ctx.reply(gptResponse?.text + `\nИспользовано: ${(parseInt((gptResponse?.totalUsage||'0').toString())/50).toFixed(2)} коп`);
@@ -255,67 +237,16 @@ bot.hears(yandexGptRegex, async (ctx) => {
     }
 });
 
-// Обработчик Cloud Function
-// Remove this entire first handler function (lines ~252-280):
-// export async function handler(event: any, context?: any) {
-//   console.log('Received event:', JSON.stringify(event));
-//   try {
-//     if (!botInitialized) {
-//       await initializeBot();
-//     }
-
-//     if (!event.body) {
-//       console.error('Event body is missing');
-//       return { statusCode: 400, body: 'Event body is missing' };
-//     }
-//     let updateString = event.body;
-//     if (typeof event.body !== 'string') {
-//         updateString = JSON.stringify(event.body);
-//     }
-//     const update = JSON.parse(updateString);
-//     console.log('Parsed update:', JSON.stringify(update));
-
-//     // Преобразуем business_message в стандартный формат сообщения Telegram
-//     if (update.business_message) {
-//         update.message = {
-//             ...update.business_message,
-//             business_connection_id: update.business_message.business_connection_id
-//         };
-//     }
-
-//     await bot.handleUpdate(update);
-//     return { statusCode: 200, body: 'OK' };
-
-// } catch (err: any) {
-//     console.error('Error in handler:', err);
-//     const errorMessage = err.message || 'Unknown error';
-//     const errorStack = err.stack || 'No stack trace';
-//     console.error(`Error message: ${errorMessage}, Stack: ${errorStack}`);
-//     return { statusCode: 500, body: `Error processing update: ${errorMessage}` };
-// }
-
 // ID вашего каталога в Yandex Cloud
 const FOLDER_ID = process.env.FOLDER_ID; // Лучше всего передавать через переменные окружения функции
-const YANDEX_GPT_MODEL_LITE_URI = `gpt://${FOLDER_ID}/yandexgpt-lite`;
-
-import {
-    Session,
-    serviceClients,
-    cloudApi, // Ensure cloudApi is imported if you need types from it
-} from '@yandex-cloud/nodejs-sdk';
-
-// Placeholder types - you'll need to find the correct ones or define them
-// based on Yandex Cloud API documentation if not easily importable.
-// For now, as a fallback:
-// type TextGenerationRequest = any; // Already defined
-// type GPTMessage = any; // Already defined
+const YANDEX_GPT_MODEL_LITE_URI = `gpt://${FOLDER_ID}/yandexgpt-lite/latest`;
 
 // Глобальная переменная для хранения IAM токена из контекста
 let currentIamToken: string | null = null;
 
 // Обновленная функция getYandexGPTResponse
 // Добавьте логирование для проверки Folder ID
-async function getYandexGPTResponse(prompt: string, folderId: string): Promise<{ text: string; totalUsage?: string } | null> {
+async function getYandexGPTResponse(prompt: string): Promise<{ text: string; totalUsage?: string } | null> {
     try {
         // Проверяем, что у нас есть IAM токен из контекста
         if (!currentIamToken) {
@@ -327,16 +258,14 @@ async function getYandexGPTResponse(prompt: string, folderId: string): Promise<{
         console.log('Using IAM token type:', typeof currentIamToken);
         console.log('IAM token length:', currentIamToken.length);
         console.log('IAM token starts with:', currentIamToken.substring(0, 10));
-        console.log('Using folder ID:', folderId); // Добавьте эту строку
+        console.log('Using folder ID:', FOLDER_ID); // Добавьте эту строку
         
         // Используем прямой HTTP запрос к Foundation Models API
         const url = 'https://llm.api.cloud.yandex.net/foundationModels/v1/completion';
         
         const requestBody = {
             // Попробуйте этот вариант:
-            modelUri: `gpt://${folderId}/yandexgpt-lite/latest`,
-            // Или этот:
-            // modelUri: `gpt://${folderId}/yandexgpt/latest`,
+            modelUri: YANDEX_GPT_MODEL_LITE_URI,
             completionOptions: {
                 stream: false,
                 temperature: 0.6,
@@ -355,7 +284,7 @@ async function getYandexGPTResponse(prompt: string, folderId: string): Promise<{
             headers: {
                 'Content-Type': 'application/json',
                 'Authorization': `Bearer ${currentIamToken}`,
-                'x-folder-id': folderId
+                'x-folder-id': FOLDER_ID||''
             },
             body: JSON.stringify(requestBody)
         });
@@ -435,7 +364,7 @@ export async function handler(event: any, context?: any) {
             updateString = JSON.stringify(event.body);
         }
         const update = JSON.parse(updateString);
-        console.log('Parsed update:', JSON.stringify(update));
+      console.log('Parsed update:', JSON.stringify(update));
 
         // Преобразуем business_message в стандартный формат сообщения Telegram
         if (update.business_message) {
