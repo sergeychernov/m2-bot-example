@@ -1,6 +1,8 @@
 import { Bot, InlineKeyboard } from 'grammy'; // webhookCallback удален, так как не используется напрямую в handler
 import fs from 'fs';
 import path from 'path';
+import { getYandexGPTResponse, setIamToken } from './gpt';
+// Импортируем функции из gpt.ts
 
 const botToken = process.env.BOT_TOKEN;
 if (!botToken) {
@@ -53,7 +55,7 @@ interface Client {
 // Функция для загрузки клиентов из JSON файла
 const loadClients = (): Client[] => {
   try {
-    const filePath = path.resolve(__dirname, 'clients.json');
+    const filePath = path.resolve(__dirname, 'clients.json'); // Путь теперь относительно __dirname внутри src
     const fileContent = fs.readFileSync(filePath, 'utf-8');
     return JSON.parse(fileContent) as Client[];
   } catch (error) {
@@ -238,115 +240,32 @@ bot.hears(yandexGptRegex, async (ctx) => {
 });
 
 // ID вашего каталога в Yandex Cloud
-const FOLDER_ID = process.env.FOLDER_ID; // Лучше всего передавать через переменные окружения функции
-const YANDEX_GPT_MODEL_LITE_URI = `gpt://${FOLDER_ID}/yandexgpt-lite/latest`;
+const FOLDER_ID = process.env.YC_FOLDER_ID; // Лучше всего передавать через переменные окружения функции
 
 // Глобальная переменная для хранения IAM токена из контекста
 let currentIamToken: string | null = null;
 
 // Обновленная функция getYandexGPTResponse
 // Добавьте логирование для проверки Folder ID
-async function getYandexGPTResponse(prompt: string): Promise<{ text: string; totalUsage?: string } | null> {
-    try {
-        // Проверяем, что у нас есть IAM токен из контекста
-        if (!currentIamToken) {
-            console.error('IAM token not available from function context');
-            return { text: 'Ошибка: IAM токен недоступен' };
-        }
-
-        // Добавляем логирование для отладки
-        console.log('Using IAM token type:', typeof currentIamToken);
-        console.log('IAM token length:', currentIamToken.length);
-        console.log('IAM token starts with:', currentIamToken.substring(0, 10));
-        console.log('Using folder ID:', FOLDER_ID); // Добавьте эту строку
-        
-        // Используем прямой HTTP запрос к Foundation Models API
-        const url = 'https://llm.api.cloud.yandex.net/foundationModels/v1/completion';
-        
-        const requestBody = {
-            // Попробуйте этот вариант:
-            modelUri: YANDEX_GPT_MODEL_LITE_URI,
-            completionOptions: {
-                stream: false,
-                temperature: 0.6,
-                maxTokens: 2000
-            },
-            messages: [
-                {
-                    role: 'user',
-                    text: prompt
-                }
-            ]
-        };
-
-        const response = await fetch(url, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${currentIamToken}`,
-                'x-folder-id': FOLDER_ID||''
-            },
-            body: JSON.stringify(requestBody)
-        });
-
-        if (!response.ok) {
-            const errorText = await response.text();
-            console.error('YandexGPT API error:', response.status, errorText);
-            return { text: `Ошибка API: ${response.status} - ${errorText}`, totalUsage: undefined };
-        }
-
-        // Add this interface at the top of the file
-        interface YandexGPTResponse {
-            result: {
-                alternatives: Array<{
-                    message: {
-                        text: string;
-                    };
-                }>;
-                usage: {
-                  inputTextTokens: string; // или number, если API возвращает число
-                  completionTokens: string; // или number
-                  totalTokens: string; // или number
-              };
-            };
-        }
-
-        // Then use it in the function:
-        const result = await response.json() as YandexGPTResponse;
-        
-        if (result.result && result.result.alternatives && result.result.alternatives.length > 0) {
-            return { text: result.result.alternatives[0].message.text, totalUsage: result.result?.usage.totalTokens };
-        } else {
-            console.error('Unexpected response format:', result);
-            return { text: 'Ошибка: Неожиданный формат ответа от YandexGPT', totalUsage: undefined };
-        }
-        
-    } catch (error: any) {
-        console.error('Error getting Yandex GPT response:', error);
-        const errorMessage = error instanceof Error ? error.message : String(error);
-        return { text: `Ошибка: ${errorMessage}`, totalUsage: undefined };
-    }
-}
 
 // Обновленный обработчик Cloud Function
 export async function handler(event: any, context?: any) {
     console.log('Received event:', JSON.stringify(event));
     
-    // ВАЖНО: Получаем IAM токен из контекста функции
+    // ВАЖНО: Получаем IAM токен из контекста функции и передаем его в gpt.ts
     if (context && context.token) {
-        // Исправление: используем access_token из объекта token
         if (typeof context.token === 'string') {
-            currentIamToken = context.token;
+            setIamToken(context.token);
         } else if (context.token.access_token) {
-            currentIamToken = context.token.access_token;
+            setIamToken(context.token.access_token);
         } else {
             console.error('Invalid token format in context:', context.token);
-            currentIamToken = null;
+            setIamToken(null);
         }
-        console.log('IAM token received from function context');
+        console.log('IAM token received from function context and set for gpt.ts');
     } else {
         console.error('IAM token not found in function context');
-        currentIamToken = null;
+        setIamToken(null);
     }
     
     try {

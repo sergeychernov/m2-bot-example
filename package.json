@@ -2,11 +2,11 @@
   "name": "m2-bot-example",
   "version": "1.0.0",
   "description": "",
-  "main": "index.js",
+  "main": "dist/index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "build": "tsc",
-    "zip": "npm run build && rm -f function.zip && zip -r function.zip index.js package.json yarn.lock clients.json",
+    "zip": "npm run build && rm -f function.zip && zip -j function.zip dist/*.js src/*.json package.json package-lock.json",
     "setup": "dotenv -e .env -- bash -c 'yc config set cloud-id $YC_CLOUD_ID && yc config set folder-id $YC_FOLDER_ID'",
     "deploy": "dotenv -e .env -- bash -c 'npm run zip && yc serverless function version create --function-name=$YC_FUNCTION_NAME --runtime=$YC_RUNTIME --entrypoint=$YC_ENTRYPOINT --memory=$YC_MEMORY --execution-timeout=$YC_EXECUTION_TIMEOUT --source-path=function.zip --cloud-id=$YC_CLOUD_ID --folder-id=$YC_FOLDER_ID --service-account-id=$YC_SERVICE_ACCOUNT --environment BOT_TOKEN=$BOT_TOKEN,YC_FOLDER_ID=$YC_FOLDER_ID'"
   },
@@ -14,11 +14,7 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "@types/node-fetch": "^2.6.12",
-    "@yandex-cloud/nodejs-sdk": "^2.9.0",
-    "grammy": "^1.36.3",
-    "node-fetch": "^3.3.2",
-    "yandex-cloud": "^1.4.3"
+    "grammy": "^1.36.3"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",
