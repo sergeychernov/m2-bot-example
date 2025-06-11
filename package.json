@@ -6,7 +6,7 @@
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "build": "tsc",
-    "zip": "npm run build && rm -f function.zip && zip -r function.zip index.js package.json yarn.lock",
+    "zip": "npm run build && rm -f function.zip && zip -r function.zip index.js package.json yarn.lock clients.json",
     "setup": "dotenv -e .env -- bash -c 'yc config set cloud-id $YC_CLOUD_ID && yc config set folder-id $YC_FOLDER_ID'",
     "deploy": "dotenv -e .env -- bash -c 'npm run zip && yc serverless function version create --function-name=$YC_FUNCTION_NAME --runtime=$YC_RUNTIME --entrypoint=$YC_ENTRYPOINT --memory=$YC_MEMORY --execution-timeout=$YC_EXECUTION_TIMEOUT --source-path=function.zip --cloud-id=$YC_CLOUD_ID --folder-id=$YC_FOLDER_ID --environment BOT_TOKEN=$BOT_TOKEN'"
   },
