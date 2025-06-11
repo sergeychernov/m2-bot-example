@@ -167,24 +167,46 @@ bot.action(/client_(.+)/, async (ctx) => {
 bot.hears(/^(привет|здравствуй|добрый день|доброе утро|добрый вечер|хелло|хай|салют)/i, async (ctx) => {
   const businessConnectionId = (ctx.update as any).message?.business_connection_id || (ctx.update as any).business_message?.business_connection_id;
 
-  const now = new Date();
-  const hour = now.getHours(); // Получаем текущий час (0-23)
-
-  let greeting = 'Привет!'; // Приветствие по умолчанию
-
-  if (hour >= 5 && hour < 12) {
-    greeting = 'Доброе утро!';
-  } else if (hour >= 12 && hour < 17) {
-    greeting = 'Добрый день!';
-  } else if (hour >= 17 && hour < 22) {
-    greeting = 'Добрый вечер!';
-  } else {
-    greeting = 'Доброй ночи!';
-  }
-
   if (businessConnectionId && ctx?.from?.id === ctx?.chat?.id) {
+    const now = new Date();
+    const hour = now.getHours(); // Получаем текущий час (0-23)
+
+    let timeBasedGreeting = '';
+    if (hour >= 5 && hour < 12) {
+      timeBasedGreeting = 'Доброе утро';
+    } else if (hour >= 12 && hour < 17) {
+      timeBasedGreeting = 'Добрый день';
+    } else if (hour >= 17 && hour < 22) {
+      timeBasedGreeting = 'Добрый вечер';
+    } else {
+      timeBasedGreeting = 'Доброй ночи';
+    }
+
+    // Попытка получить имя пользователя
+    let userName = '';
+    if (ctx.from && ctx.from.first_name && /^[а-яА-ЯёЁ\s]+$/.test(ctx.from.first_name)) {
+      userName = `, ${ctx.from.first_name}`;
+    }
+
+    // Варианты приветствий
+    const greetings = [
+      `${timeBasedGreeting}${userName}`,
+      `Здравствуй${userName}`,
+	  `Приветствую${userName}`,
+	  `Привет${userName}`,
+      `${timeBasedGreeting.toLowerCase()}${userName}` // Вариант с маленькой буквы
+    ];
+
+    // Выбираем случайное приветствие
+    let finalGreeting = greetings[Math.floor(Math.random() * greetings.length)];
+
+    // Случайно добавляем или не добавляем "!"
+    if (Math.random() < 0.7) { // 70% шанс добавить "!"
+      finalGreeting += '!';
+    }
+
     try {
-      await ctx.telegram.sendMessage(ctx.chat.id, greeting, {
+      await ctx.telegram.sendMessage(ctx.chat.id, finalGreeting, {
         // @ts-ignore - business_connection_id is required for business messages but not in type definitions
         business_connection_id: businessConnectionId
       });
@@ -192,7 +214,6 @@ bot.hears(/^(привет|здравствуй|добрый день|добро�
       console.error('Error sending message via business connection:', error);
     }
   }
-  // The 'else' block that was here, which caused a reply even without a businessConnectionId, has been removed.
 });
 
 // Обработчик Cloud Function
