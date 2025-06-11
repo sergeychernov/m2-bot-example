@@ -227,8 +227,6 @@ bot.hears(yandexGptRegex, async (ctx) => {
         const prompt = ctx.match[1].trim();
         if (prompt) {
             try {
-                await ctx.reply('Yandex обрабатывает ваш запрос...');
-
                 const yandexFolderID = process.env.YC_FOLDER_ID || 'YOUR_YANDEX_FOLDER_ID';
 
                 if (!yandexFolderID || yandexFolderID === 'YOUR_YANDEX_FOLDER_ID') {
@@ -241,7 +239,7 @@ bot.hears(yandexGptRegex, async (ctx) => {
                 const gptResponse = await getYandexGPTResponse(prompt, yandexFolderID);
 
                 if (gptResponse) {
-                    await ctx.reply(gptResponse);
+                    await ctx.reply(gptResponse?.text + `\nИспользовано: ${(parseInt((gptResponse?.totalUsage||'0').toString())/50).toFixed(2)} коп`);
                 } else {
                     await ctx.reply('Не удалось получить ответ от YandexGPT.');
                 }
@@ -317,12 +315,12 @@ let currentIamToken: string | null = null;
 
 // Обновленная функция getYandexGPTResponse
 // Добавьте логирование для проверки Folder ID
-async function getYandexGPTResponse(prompt: string, folderId: string): Promise<string | null> {
+async function getYandexGPTResponse(prompt: string, folderId: string): Promise<{ text: string; totalUsage?: string } | null> {
     try {
         // Проверяем, что у нас есть IAM токен из контекста
         if (!currentIamToken) {
             console.error('IAM token not available from function context');
-            return 'Ошибка: IAM токен недоступен';
+            return { text: 'Ошибка: IAM токен недоступен' };
         }
 
         // Добавляем логирование для отладки
@@ -365,7 +363,7 @@ async function getYandexGPTResponse(prompt: string, folderId: string): Promise<s
         if (!response.ok) {
             const errorText = await response.text();
             console.error('YandexGPT API error:', response.status, errorText);
-            return `Ошибка API: ${response.status} - ${errorText}`;
+            return { text: `Ошибка API: ${response.status} - ${errorText}`, totalUsage: undefined };
         }
 
         // Add this interface at the top of the file
@@ -376,6 +374,11 @@ async function getYandexGPTResponse(prompt: string, folderId: string): Promise<s
                         text: string;
                     };
                 }>;
+                usage: {
+                  inputTextTokens: string; // или number, если API возвращает число
+                  completionTokens: string; // или number
+                  totalTokens: string; // или number
+              };
             };
         }
 
@@ -383,16 +386,16 @@ async function getYandexGPTResponse(prompt: string, folderId: string): Promise<s
         const result = await response.json() as YandexGPTResponse;
         
         if (result.result && result.result.alternatives && result.result.alternatives.length > 0) {
-            return result.result.alternatives[0].message.text;
+            return { text: result.result.alternatives[0].message.text, totalUsage: result.result?.usage.totalTokens };
         } else {
             console.error('Unexpected response format:', result);
-            return 'Ошибка: Неожиданный формат ответа от YandexGPT';
+            return { text: 'Ошибка: Неожиданный формат ответа от YandexGPT', totalUsage: undefined };
         }
         
     } catch (error: any) {
         console.error('Error getting Yandex GPT response:', error);
         const errorMessage = error instanceof Error ? error.message : String(error);
-        return `Ошибка: ${errorMessage}`;
+        return { text: `Ошибка: ${errorMessage}`, totalUsage: undefined };
     }
 }
 
