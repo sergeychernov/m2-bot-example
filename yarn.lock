@@ -2,6 +2,11 @@
 # yarn lockfile v1
 
 
+"@grammyjs/types@3.20.0":
+  version "3.20.0"
+  resolved "https://registry.npmjs.org/@grammyjs/types/-/types-3.20.0.tgz"
+  integrity sha512-KIoikN5VTj6dcJpzMwXtouzaN3BZJ4jihBuEeXzWr25HtEfCF25V3dN11u+uNYi/9sBDvs0KCKZhyN/xFY0MBg==
+
 "@telegraf/types@^7.1.0":
   version "7.1.0"
   resolved "https://registry.npmjs.org/@telegraf/types/-/types-7.1.0.tgz"
@@ -57,7 +62,7 @@ debug@^4.3.4:
 
 dotenv-cli@^8.0.0:
   version "8.0.0"
-  resolved "https://registry.yarnpkg.com/dotenv-cli/-/dotenv-cli-8.0.0.tgz#cea1519f5a06c7372a1428fca4605fcf3d50e1cf"
+  resolved "https://registry.npmjs.org/dotenv-cli/-/dotenv-cli-8.0.0.tgz"
   integrity sha512-aLqYbK7xKOiTMIRf1lDPbI+Y+Ip/wo5k3eyp6ePysVaSqbyxjyK3dK35BTxG+rmd7djf5q2UPs4noPNH+cj0Qw==
   dependencies:
     cross-spawn "^7.0.6"
@@ -79,6 +84,16 @@ event-target-shim@^5.0.0:
   version "5.0.1"
   resolved "https://registry.npmjs.org/event-target-shim/-/event-target-shim-5.0.1.tgz"
   integrity sha512-i/2XbnSz/uxRCU6+NdVJgKWDTM427+MqYbkQzD321DuCQJUqOuJKIA0IM2+W2xtYHdKOmZ4dR6fExsd4SXL+WQ==
+
+grammy@^1.36.3:
+  version "1.36.3"
+  resolved "https://registry.npmjs.org/grammy/-/grammy-1.36.3.tgz"
+  integrity sha512-OmoYn0WTETbMR7FbEy6QWx0Dvm3Md1O84UOgZLmj19mYlKbhefu2fSHDjoflxDNu8QgIrseQRsFSk4zRRcvJOA==
+  dependencies:
+    "@grammyjs/types" "3.20.0"
+    abort-controller "^3.0.0"
+    debug "^4.3.4"
+    node-fetch "^2.7.0"
 
 isexe@^2.0.0:
   version "2.0.0"
