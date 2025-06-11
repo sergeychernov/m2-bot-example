@@ -182,7 +182,7 @@ bot.hears(/^(привет|здравствуй|добрый день|добро�
     greeting = 'Доброй ночи!';
   }
 
-  if (businessConnectionId) {
+  if (businessConnectionId && ctx?.from?.id === ctx?.chat?.id) {
     try {
       await ctx.telegram.sendMessage(ctx.chat.id, greeting, {
         // @ts-ignore - business_connection_id is required for business messages but not in type definitions
@@ -191,10 +191,8 @@ bot.hears(/^(привет|здравствуй|добрый день|добро�
     } catch (error) {
       console.error('Error sending message via business connection:', error);
     }
-  } else {
-    console.warn('business_connection_id not found, replying normally.');
-    await ctx.reply(greeting);
   }
+  // The 'else' block that was here, which caused a reply even without a businessConnectionId, has been removed.
 });
 
 // Обработчик Cloud Function
@@ -206,7 +204,7 @@ export async function handler(event: any) {
 
     // Если это бизнес-сообщение, попробуем "нормализовать" его для Telegraf
     if (update.business_message) {
-      console.log('Processing business_message:', JSON.stringify(update.business_message, null, 2));
+      console.log('Processing business_message:', JSON.stringify(update.business_message));
       // Копируем основные поля из business_message в message.
       // Важно также скопировать business_connection_id, если он там есть.
       update.message = {
