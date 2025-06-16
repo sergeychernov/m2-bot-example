@@ -2,7 +2,10 @@ import { Bot, InlineKeyboard } from 'grammy'; // webhookCallback удален, �
 import fs from 'fs';
 import path from 'path';
 import { getYandexGPTResponse, setIamToken } from './gpt';
-// Импортируем функции из gpt.ts
+import { closeDriver, getDriver } from './ydb'; // Добавьте этот импорт
+
+import { iam } from './iam';
+import { Driver } from 'ydb-sdk';
 
 const botToken = process.env.BOT_TOKEN;
 if (!botToken) {
@@ -64,18 +67,6 @@ const loadClients = (): Client[] => {
   }
 };
 
-bot.on("business_connection:is_enabled", async (ctx) => {
-  const id = ctx.businessConnection.user_chat_id;
-  
-  await ctx.api.sendMessage(id, "Спасибо, что подключили меня!");
-});
-bot.use(async (ctx, next) => {
-  console.log("Received an update (via bot.use):");
-  console.log(JSON.stringify(ctx.update));
-  // Убедитесь, что вы вызываете next(), чтобы другие обработчики могли сработать
-  await next(); 
-});
-
 // Обработчик команды /start
 bot.command('start', async (ctx) => {
   // ctx.me теперь должен быть доступен, если initializeBot() был вызван
@@ -97,6 +88,7 @@ bot.command('help', async (ctx) => {
     '/help - Показать это сообщение\n' +
     '/clients - Показать список всех клиентов'
   );
+  //await handleUpdate(ctx);
 });
 
 // Команда /clients
@@ -254,30 +246,74 @@ bot.hears(yandexGptRegex, async (ctx) => {
 // ID вашего каталога в Yandex Cloud
 const FOLDER_ID = process.env.YC_FOLDER_ID; // Лучше всего передавать через переменные окружения функции
 
-
+let dbDriver: Driver | undefined;
 // Обновленный обработчик Cloud Function
 export async function handler(event: any, context?: any) {
+  const iamToken = iam(context);
+  /*DB
+  console.log('Received event:', JSON.stringify(event));
+  const YDB_DATABASE = process.env.YDB_DATABASE;
+  if (!YDB_DATABASE) {
+    console.error('YDB_DATABASE is not set');
+    process.exit(1);
+  }
+  const YDB_ENDPOINT = process.env.YDB_ENDPOINT;
+  if (!YDB_ENDPOINT) {
+    console.error('YDB_ENDPOINT is not set');
+    process.exit(1);
+  }
+  const logger = {
+    info: console.info,
+    warn: console.warn,
+    error: console.error,
+    debug: console.debug,
+    fatal: console.error, // Map fatal to console.error
+    trace: console.trace,
+  } as Logger;
+
+  const authService = iamToken ? new TokenAuthService(iamToken) : new MetadataAuthService();
+  // iamToken 
+  //   ? new TokenAuthService(iamToken) // Используем TokenAuthService
+  //   : getCredentialsFromEnv(logger);
+    console.log('IAM token:', iamToken);
+  //const driver = new Driver({ connectionString: YDB_CONNECTION_STRING, authService, logger });
+  const driver = new Driver({
+  endpoint: YDB_ENDPOINT,
+  database: YDB_DATABASE,
+  authService, // автоматический IAM в Cloud Function
+});
+  try {
+    const timeout = 10000; // 10 seconds
+    if (!await driver.ready(timeout)) {
+      console.error(`Driver has not become ready in ${timeout}ms!`);
+      process.exit(1);
+    }
+    console.log('Driver is ready!');
+
+    await driver.tableClient.withSession(async (session) => {
+      console.log('Session created. Executing simple query...');
+      const result = await session.executeQuery('SELECT 1 AS test_value;');
+      console.log('Query executed. Result:', JSON.stringify(result));
+    });
+    console.log('Successfully connected and executed query.');
+  } catch (error) {
+    console.error('Error during YDB operation:', error);
+  } finally {
+    await driver.destroy();
+    console.log('Driver destroyed.');
+  }
+  */
+  
     console.log('Received event:', JSON.stringify(event));
     
-    // ВАЖНО: Получаем IAM токен из контекста функции и передаем его в gpt.ts
-    if (context && context.token) {
-        if (typeof context.token === 'string') {
-            setIamToken(context.token);
-        } else if (context.token.access_token) {
-            setIamToken(context.token.access_token);
-        } else {
-            console.error('Invalid token format in context:', context.token);
-            setIamToken(null);
-        }
-        console.log('IAM token received from function context and set for gpt.ts');
-    } else {
-        console.error('IAM token not found in function context');
-        setIamToken(null);
-    }
+    setIamToken(iamToken);
     
     try {
         if (!botInitialized) {
             await initializeBot();
+        }
+        if (!dbDriver) {
+            dbDriver = await getDriver(iamToken || undefined);
         }
 
         if (!event.body) {
@@ -310,4 +346,43 @@ export async function handler(event: any, context?: any) {
         console.error(`Error message: ${errorMessage}, Stack: ${errorStack}`);
         return { statusCode: 500, body: `Error processing update: ${errorMessage}` };
     }
+  
 }
+
+
+// Пример использования в вашей логике:
+/*
+async function handleUpdate(ctx: any) {
+  // ... existing code ...
+  try {
+    // Пример: создаем таблицу, если она не существует (только для демонстрации)
+    // В реальном приложении структуру БД лучше создавать отдельно
+    const createTableQuery = `
+      CREATE TABLE IF NOT EXISTS example_table (
+        id Uint64,
+        value String,
+        PRIMARY KEY (id)
+      );
+    `;
+    await executeQuery(createTableQuery);
+    console.log('Table created or already exists.');
+
+    // Пример: вставка данных
+    const upsertQuery = `
+      UPSERT INTO example_table (id, value) VALUES (1, "Hello YDB!");
+    `;
+    await executeQuery(upsertQuery);
+    console.log('Data upserted.');
+
+    // Пример: чтение данных
+    const selectQuery = 'SELECT * FROM example_table WHERE id = 1;';
+    const result = await executeQuery(selectQuery);
+    console.log('Selected data:', JSON.stringify(result.resultSets[0]));
+
+    await ctx.reply('Проверил подключение к YDB и выполнил тестовые запросы!');
+  } catch (error) {
+    console.error('YDB Error:', error);
+    await ctx.reply('Ошибка при работе с YDB.');
+  }
+}
+*/
