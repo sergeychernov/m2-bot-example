@@ -64,6 +64,18 @@ const loadClients = (): Client[] => {
   }
 };
 
+bot.on("business_connection:is_enabled", async (ctx) => {
+  const id = ctx.businessConnection.user_chat_id;
+  
+  await ctx.api.sendMessage(id, "Спасибо, что подключили меня!");
+});
+bot.use(async (ctx, next) => {
+  console.log("Received an update (via bot.use):");
+  console.log(JSON.stringify(ctx.update));
+  // Убедитесь, что вы вызываете next(), чтобы другие обработчики могли сработать
+  await next(); 
+});
+
 // Обработчик команды /start
 bot.command('start', async (ctx) => {
   // ctx.me теперь должен быть доступен, если initializeBot() был вызван
@@ -242,11 +254,6 @@ bot.hears(yandexGptRegex, async (ctx) => {
 // ID вашего каталога в Yandex Cloud
 const FOLDER_ID = process.env.YC_FOLDER_ID; // Лучше всего передавать через переменные окружения функции
 
-// Глобальная переменная для хранения IAM токена из контекста
-let currentIamToken: string | null = null;
-
-// Обновленная функция getYandexGPTResponse
-// Добавьте логирование для проверки Folder ID
 
 // Обновленный обработчик Cloud Function
 export async function handler(event: any, context?: any) {

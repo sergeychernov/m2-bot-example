@@ -1,0 +1,83 @@
+[
+  {
+    "id": "CL001",
+    "firstName": "Иван",
+    "lastName": "Петров",
+    "category": "buyer",
+    "status": "active",
+    "propertyInfo": {
+      "type": "apartment",
+      "requirements": "2-комнатная квартира, бюджет до 10млн"
+    }
+  },
+  {
+    "id": "CL002",
+    "firstName": "Мария",
+    "lastName": "Сидорова",
+    "category": "seller",
+    "status": "active",
+    "propertyInfo": {
+      "type": "house",
+      "description": "Загородный дом 150м², участок 12 соток",
+      "price": 15000000
+    }
+  },
+  {
+    "id": "CL003",
+    "firstName": "Алексей",
+    "lastName": "Иванов",
+    "category": "buyer",
+    "status": "archived",
+    "propertyInfo": {
+      "type": "commercial",
+      "requirements": "Торговое помещение 100-150м²"
+    }
+  },
+  {
+    "id": "CL004",
+    "firstName": "Елена",
+    "lastName": "Кузнецова",
+    "category": "seller",
+    "status": "banned",
+    "propertyInfo": {
+      "type": "apartment",
+      "description": "3-комнатная квартира 85м²",
+      "price": 12500000
+    }
+  },
+  {
+    "id": "CL005",
+    "firstName": "Дмитрий",
+    "lastName": "Смирнов",
+    "category": "buyer",
+    "status": "active",
+    "propertyInfo": {
+      "type": "apartment",
+      "requirements": "1-комнатная квартира, новостройка"
+    }
+  },
+  {
+    "id": "CL006",
+    "firstName": "Олег",
+    "lastName": "Петров",
+    "category": "buyer",
+    "status": "active",
+    "username": "@Folerty",
+    "propertyInfo": {
+      "type": "apartment",
+      "requirements": "Квартира"
+    }
+  },
+  {
+    "id": "CL007",
+    "firstName": "Сергей",
+    "lastName": "Чернов",
+    "category": "buyer",
+    "status": "active",
+    "username": "@sergeychernov1982",
+    "propertyInfo": {
+      "type": "apartment",
+      "requirements": "Студия в центре"
+    }
+  }
+]
