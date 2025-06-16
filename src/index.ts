@@ -2,7 +2,7 @@ import { Bot, InlineKeyboard } from 'grammy'; // webhookCallback удален, �
 import fs from 'fs';
 import path from 'path';
 import { getYandexGPTResponse, setIamToken } from './gpt';
-import { closeDriver, getDriver } from './ydb'; // Добавьте этот импорт
+import { closeDriver, ensureChatsTableExists, getDriver } from './ydb'; // Добавьте этот импорт
 
 import { iam } from './iam';
 import { Driver } from 'ydb-sdk';
@@ -313,7 +313,8 @@ export async function handler(event: any, context?: any) {
             await initializeBot();
         }
         if (!dbDriver) {
-            dbDriver = await getDriver(iamToken || undefined);
+          dbDriver = await getDriver(iamToken || undefined);
+          await ensureChatsTableExists();
         }
 
         if (!event.body) {
