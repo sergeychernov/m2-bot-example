@@ -2,7 +2,7 @@ import { Bot, InlineKeyboard } from 'grammy'; // webhookCallback удален, �
 import fs from 'fs';
 import path from 'path';
 import { getYandexGPTResponse, setIamToken } from './gpt';
-import { closeDriver, ensureChatsTableExists, getDriver } from './ydb'; // Добавьте этот импорт
+import { addChatMessage, ChatMessageType, closeDriver, ensureChatsTableExists, getDriver } from './ydb'; // Добавьте этот импорт
 
 import { iam } from './iam';
 import { Driver } from 'ydb-sdk';
@@ -206,14 +206,24 @@ bot.hears(greetingRegex, async (ctx) => {
 });
 
 // Новый обработчик для сообщений, начинающихся с 'y:'
-const yandexGptRegex = /^y:(.*)/i;
-// Обработчик для команд 'y:'
+const yandexGptRegex = /^(.*)/i;
+// от бота не перехватывает
 bot.hears(yandexGptRegex, async (ctx) => {
     console.log('Received Yandex GPT command:', JSON.stringify(ctx));
-    const businessConnectionId = ctx.businessConnectionId || ctx.message?.business_connection_id;
-
-    if (businessConnectionId && ctx.match && ctx.match[1]) {
-        const prompt = ctx.match[1].trim();
+  const businessConnectionId = ctx.businessConnectionId || ctx.message?.business_connection_id;
+  let type: ChatMessageType;
+  if (!businessConnectionId) {
+    type = 'admin';
+  } else if (ctx.from?.is_bot) {
+    type = 'bot';
+  } else if (ctx.from?.id === ctx.chat?.id) {
+    type = 'client';
+  } else {
+    type = 'realtor'
+  }
+    await addChatMessage(ctx.chat?.id?.toString() || '0', ctx.message?.message_id?.toString() || '0', ctx.message?.text || '0', type);
+    if (businessConnectionId && type === 'client') {
+        const prompt = ctx.message?.text;
         if (prompt) {
             try {
 
@@ -238,9 +248,8 @@ bot.hears(yandexGptRegex, async (ctx) => {
         } else {
             await ctx.reply('Пожалуйста, укажите ваш запрос после "y:". Например: y: расскажи анекдот');
         }
-    } else if (businessConnectionId) {
-        await ctx.reply('Для запроса к YandexGPT, пожалуйста, используйте формат "y: ваш запрос".');
-    }
+    } else {
+      }
 });
 
 // ID вашего каталога в Yandex Cloud
