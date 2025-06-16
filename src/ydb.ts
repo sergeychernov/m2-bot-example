@@ -122,6 +122,56 @@ export async function addChatMessage(
   }
 }
 
+export interface ChatMessage {
+  chatId: string;
+  messageId: string;
+  message: string;
+  type: ChatMessageType;
+  timestamp: Date;
+}
+
+export async function getLastChatMessages(chatId: string, limit: number, iamToken?: string): Promise<ChatMessage[]> {
+  const currentDriver = await getDriver(iamToken);
+  try {
+    return await currentDriver.tableClient.withSession(async (session) => {
+      const query = `
+        DECLARE $chatId AS Utf8;
+
+        SELECT chatId, messageId, message, type, timestamp
+        FROM chats
+        WHERE chatId = $chatId
+        ORDER BY timestamp DESC
+        LIMIT ${limit};
+      `;
+
+      const { resultSets } = await session.executeQuery(query, {
+        $chatId: { type: Types.UTF8, value: { textValue: chatId } },
+      });
+
+      const messages: ChatMessage[] = [];
+      if (resultSets[0]?.rows) {
+        for (const row of resultSets[0].rows) {
+          if (row.items) {
+            messages.push({
+              chatId: row.items[0].textValue || '',
+              messageId: row.items[1].textValue || '',
+              message: row.items[2].textValue || '',
+              type: (row.items[3].textValue || 'client') as ChatMessageType, // Приведение типа, возможно, потребуется более строгая проверка
+              // YDB возвращает timestamp как микросекунды (uint64), преобразуем в Date
+              timestamp: new Date(Number(row.items[4].uint64Value) / 1000), 
+            });
+          }
+        }
+      }
+      logger.info(`Retrieved last 10 messages for chat ${chatId}. Found: ${messages.length}`);
+      return messages.reverse(); // Возвращаем в хронологическом порядке (старые -> новые)
+    });
+  } catch (error) {
+    logger.error(`Failed to get last ten chat messages for chatId ${chatId}:`, error);
+    throw error;
+  }
+}
+
 export async function closeDriver() {
   if (driver) {
     await driver.destroy();

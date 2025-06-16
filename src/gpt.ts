@@ -11,7 +11,10 @@ export function setIamToken(token: string | null) {
 }
 
 // Обновленная функция getYandexGPTResponse
-export async function getYandexGPTResponse(prompt: string): Promise<{ text: string; totalUsage?: string } | null> {
+export async function getYandexGPTResponse(prompt: string|{
+    role: 'user'|'assistant'|'system';
+    text: string;
+}[]): Promise<{ text: string; totalUsage?: string } | null> {
     try {
         if (!currentIamToken) {
             console.error('IAM token not available');
@@ -35,14 +38,14 @@ export async function getYandexGPTResponse(prompt: string): Promise<{ text: stri
             completionOptions: {
                 stream: false,
                 temperature: 0.6,
-                maxTokens: 2000
+                maxTokens: 20000
             },
-            messages: [
+            messages: typeof prompt === 'string' ? [
                 {
                     role: 'user',
                     text: prompt
                 }
-            ]
+            ] : prompt,
         };
 
         const response = await fetch(url, {
