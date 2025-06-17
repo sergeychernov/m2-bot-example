@@ -172,6 +172,34 @@ export async function getLastChatMessages(chatId: string, limit: number, iamToke
   }
 }
 
+export async function clearChatMessages(chatId: string): Promise<void> {
+    const driver = await getDriver();
+    const tableName = 'chats'; // Имя вашей таблицы
+
+    const query = `
+        PRAGMA TablePathPrefix("${process.env.YDB_DATABASE}");
+        DECLARE $chatId AS Utf8;
+
+        DELETE FROM ${tableName}
+        WHERE chatId = $chatId;
+    `;
+
+    logger.info(`Executing query: ${query} for chatId: ${chatId}`);
+
+    try {
+        await driver.tableClient.withSession(async (session) => {
+            const preparedQuery = await session.prepareQuery(query);
+            await session.executeQuery(preparedQuery, {
+                '$chatId': { type: Types.UTF8, value: { textValue: chatId } },
+            });
+        });
+        logger.info(`Successfully cleared messages for chatId: ${chatId}`);
+    } catch (error) {
+        logger.error(`Error clearing messages for chatId: ${chatId}`, error);
+        throw error;
+    }
+}
+
 export async function closeDriver() {
   if (driver) {
     await driver.destroy();
