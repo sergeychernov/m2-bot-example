@@ -4,13 +4,13 @@ import path from 'path'; // path больше не нужен здесь для 
 import { getYandexGPTResponse, setIamToken } from './gpt'; 
 import { 
     addChatMessage, 
+    addPrompt, 
     ChatMessageType, 
     clearChatMessages, 
-    closeDriver, 
-    ensureChatsTableExists, 
     getDriver, 
     getLastChatMessages,
-    ensurePromptsTableExists, 
+    getLatestPromptByType,
+    Prompt,
     // addPrompt, // addPrompt больше не вызывается напрямую отсюда
     // getLatestPromptByType as getLatestBasePrompt // getLatestBasePrompt больше не нужен здесь для проверки
 } from './ydb'; 
@@ -18,6 +18,7 @@ import {
 import { iam } from './iam';
 import { Driver } from 'ydb-sdk';
 import { imitateTyping } from './telegram-utils';
+import { setupDatabase } from './setup-db';
 
 const botToken = process.env.BOT_TOKEN;
 if (!botToken) {
@@ -346,21 +347,78 @@ let dbDriver: Driver | undefined;
 
 // Обновленный обработчик Cloud Function
 export async function handler(event: any, context?: any) {
+  console.log('Received event:', JSON.stringify(event));
   const iamToken = iam(context);
+  setIamToken(iamToken);
   
-    console.log('Received event:', JSON.stringify(event));
     
-    setIamToken(iamToken);
+  try {
+    if (!dbDriver) {
+      dbDriver = await getDriver(iamToken || undefined);
+    }
+    if (event.setup_database === true) {
+      await setupDatabase();
+      return { statusCode: 200, body: 'DB initialized' };
+    }
+    if (event.httpMethod === 'GET') {
+      const {promptText} = (await getLatestPromptByType('base')) as Prompt;
+        return {
+          statusCode: 200,
+          headers: { 'Content-Type': 'text/html; charset=utf-8' },
+          body: `
+            <!DOCTYPE html>
+            <html lang="ru">
+            <head>
+              <meta charset="UTF-8">
+              <title>Большое текстовое поле</title>
+            </head>
+            <body>
+              <form method="POST">
+                <textarea name="text" rows="30" cols="100" placeholder="Вставьте сюда текст...">${promptText}</textarea><br/>
+                <button type="submit">Отправить</button>
+              </form>
+            </body>
+            </html>
+          `,
+        };
+    }
+    if (event.isBase64Encoded) {
+      if (event.httpMethod === 'POST') {
+        let bodyString = Buffer.from(event.body, 'base64').toString('utf-8');
     
-    try {
+        let textData = '';
+        if (bodyString) {
+          const params = new URLSearchParams(bodyString);
+          const rawTextData = params.get('text');
+          if (rawTextData) {
+            textData = rawTextData.replace(/\r\n/g, '\n'); // Нормализация переводов строк
+          }
+        }
+        await addPrompt(textData, 'base'); // Используем saveOrUpdatePrompt как в предыдущем примере
+        const formUrl = event.url; 
+
+        return {
+        statusCode: 200,
+        headers: { 'Content-Type': 'text/html; charset=utf-8' }, // Изменяем Content-Type
+        body: `
+          <html>
+            <head>
+              <meta http-equiv="refresh" content="3;url=${formUrl}">
+              <title>Сохранение данных</title>
+            </head>
+            <body>
+              <p>Форма сохранена. Размер: ${textData.length}.</p>
+              <p>Вы будете перенаправлены обратно через 3 секунды. Если нет, нажмите <a href="${formUrl}">сюда</a>.</p>
+            </body>
+          </html>
+        `,
+      };
+      }
+    }
         if (!botInitialized) {
             await initializeBot();
         }
-        if (!dbDriver) {
-          dbDriver = await getDriver(iamToken || undefined);
-          await ensureChatsTableExists(); 
-          await ensurePromptsTableExists(); // Эта функция теперь сама добавит начальный промпт при необходимости
-        }
+        
 
         if (!event.body) {
             console.error('Event body is missing');

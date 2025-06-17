@@ -7,12 +7,10 @@ import {
   TokenAuthService,
   MetadataAuthService,
   // Ydb, // Может понадобиться для доступа к Ydb.IValue, если не экспортируется иначе
-  declareType, // Добавим для типизации параметров запроса
-  TypedData, // Добавим для типизации параметров запроса
+
 } from 'ydb-sdk';
 import crypto from 'crypto'; // Добавили импорт crypto
-import fs from 'fs'; // Добавляем импорт fs
-import path from 'path'; // Добавляем импорт path
+
 
 const endpoint = process.env.YDB_ENDPOINT;
 const database = process.env.YDB_DATABASE;
@@ -24,7 +22,7 @@ if (!endpoint || !database) {
 
 let driver: Driver | undefined;
 
-const logger = {
+export const logger = {
     info: console.info,
     warn: console.warn,
     error: console.error,
@@ -32,6 +30,7 @@ const logger = {
     fatal: console.error, 
     trace: console.trace,
 } as Logger;
+
 
 export async function getDriver(iamToken?: string): Promise<Driver> {
   if (driver) {
@@ -50,40 +49,7 @@ export async function getDriver(iamToken?: string): Promise<Driver> {
   return driver;
 }
 
-export async function ensureChatsTableExists(iamToken?: string): Promise<void> {
-  const currentDriver = await getDriver(iamToken);
-  try {
-    await currentDriver.tableClient.withSession(async (session) => {
-      try {
-        await session.describeTable('chats');
-        logger.info("Table 'chats' already exists.");
-      } catch (error: any) {
-        logger.info("Table 'chats' not found, creating...");
-        await session.createTable(
-          'chats',
-          new TableDescription()
-            .withColumn(new Column('chatId', Types.UTF8))
-            .withColumn(new Column('messageId', Types.UTF8))
-            .withColumn(new Column('message', Types.UTF8))
-            .withColumn(new Column('timestamp', Types.TIMESTAMP))
-            .withColumn(new Column('type', Types.UTF8)) // Добавлено новое поле type
-            .withPrimaryKeys('chatId', 'messageId')
-        );
-        logger.info("Table 'chats' created successfully.");
-      }
-    });
-  } catch (error) {
-    logger.error('Failed to ensure chats table exists:', error);
-    throw error; // Перебрасываем ошибку, чтобы вызывающий код мог ее обработать
-  } finally {
-    // Важно: драйвер, созданный в getDriver, должен быть закрыт,
-    // если он не будет использоваться дальше. 
-    // Текущая реализация closeDriver() работает с глобальной переменной,
-    // что может потребовать пересмотра архитектуры управления драйверами.
-    // Для простоты здесь не вызываем currentDriver.destroy(), 
-    // предполагая, что управление жизненным циклом драйвера происходит выше.
-  }
-}
+
 
 export type ChatMessageType = 'bot' | 'client' | 'realtor' | 'admin';
 
@@ -213,45 +179,7 @@ export interface Prompt {
   createdAt: Date;
 }
 
-export async function ensurePromptsTableExists(iamToken?: string): Promise<void> {
-  const currentDriver = await getDriver(iamToken);
-  try {
-    await currentDriver.tableClient.withSession(async (session) => {
-      try {
-        await session.describeTable('prompts');
-        logger.info("Table 'prompts' already exists.");
-      } catch (error: any) {
-        logger.info("Table 'prompts' not found, creating...");
-        await session.createTable(
-          'prompts',
-          new TableDescription()
-            .withColumn(new Column('promptId', Types.UTF8))
-            .withColumn(new Column('promptText', Types.UTF8))
-            .withColumn(new Column('promptType', Types.UTF8))
-            .withColumn(new Column('createdAt', Types.TIMESTAMP))
-            .withPrimaryKeys('promptId')
-        );
-        logger.info("Table 'prompts' created successfully.");
 
-        // Добавляем базовый промпт из файла после создания таблицы
-        try {
-          const promptFilePath = path.resolve(__dirname, 'system_prompt.md');
-          const initialPromptText = fs.readFileSync(promptFilePath, 'utf-8');
-          // Вызываем addPrompt внутри той же сессии, если это возможно и эффективно,
-          // или просто вызываем как отдельную транзакцию.
-          // Для простоты здесь вызываем как отдельную операцию.
-          await addPrompt(initialPromptText, 'base', iamToken); 
-          logger.info('Initial base prompt added to DB from system_prompt.md after table creation.');
-        } catch (fileError) {
-          logger.error('Failed to read system_prompt.md to populate initial prompt after table creation:', fileError);
-        }
-      }
-    });
-  } catch (error) {
-    logger.error('Failed to ensure prompts table exists:', error);
-    throw error;
-  }
-}
 
 export async function addPrompt(
   promptText: string,
