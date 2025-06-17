@@ -255,6 +255,8 @@ bot.hears(lastMessagesRegex, async (ctx) => {
   }
 });
 
+
+
 // Новый обработчик для сообщений, начинающихся с 'y:'
 const yandexGptRegex = /^(.*)/i;
 // от бота не перехватывает
@@ -334,13 +336,28 @@ bot.hears(yandexGptRegex, async (ctx) => {
               ]);
                 //const gptResponse = await getYandexGPTResponse(prompt);
 
-              if (gptResponse) {
-
-                const r = await ctx.reply(gptResponse?.text + `\nИспользовано: ${(parseInt((gptResponse?.totalUsage || '0').toString()) / 50).toFixed(2)} коп`);
+              if (gptResponse && gptResponse.text) {
+                // Показываем статус "печатает"
+                try {
+                  console.log('typing', (ctx.chat.id), { business_connection_id: businessConnectionId });
+                  await ctx.api.sendChatAction(ctx.chat.id, 'typing', { business_connection_id: businessConnectionId });
+                } catch (e) {
+                  console.error('Error sending typing action:', JSON.stringify(e));
+                }
                 
-                await addChatMessage(ctx.chat?.id?.toString() || '0', r.message_id.toString() || '0', gptResponse?.text || '0', 'bot');
+
+                // Рассчитываем задержку
+                const textToReply = gptResponse.text;
+                const delay = textToReply.length * 200 + 1000; // 300 мс на символ
+
+                // Применяем задержку
+                await new Promise(resolve => setTimeout(resolve, delay));
+                
+                const r = await ctx.reply(textToReply + `\nИспользовано: ${(parseInt((gptResponse?.totalUsage || '0').toString()) / 50).toFixed(2)} коп`);
+                
+                await addChatMessage(ctx.chat?.id?.toString() || '0', r.message_id.toString() || '0', textToReply, 'bot');
                     
-                } else {
+              } else {
                     await ctx.reply('Не удалось получить ответ от YandexGPT.');
                 }
             } catch (error) {
