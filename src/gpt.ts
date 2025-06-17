@@ -20,10 +20,31 @@ interface GptConfig {
         temperature: number;
         maxTokens: number;
     };
-    systemPrompt: string;
+    // systemPrompt: string; // Remove this line
+}
+
+interface UserDataItem {
+    name: string;
+    value: string;
 }
 
 let gptConfig: GptConfig | null = null;
+let systemPromptContent: string | null = null; // Cache for the markdown content
+
+function loadSystemPrompt(): string {
+    if (systemPromptContent) {
+        return systemPromptContent;
+    }
+    try {
+        const promptPath = path.resolve(__dirname, 'system_prompt.md');
+        systemPromptContent = fs.readFileSync(promptPath, 'utf-8');
+        return systemPromptContent;
+    } catch (error) {
+        console.error('Failed to load system_prompt.md:', error);
+        // Fallback prompt or re-throw error
+        return "Системный промпт по умолчанию, если system_prompt.md не найден. {{Имя риелтора}} {{Опыт}}"; 
+    }
+}
 
 function loadGptConfig(): GptConfig {
     if (gptConfig) {
@@ -32,16 +53,16 @@ function loadGptConfig(): GptConfig {
     try {
         const configPath = path.resolve(__dirname, 'gpt.json');
         const configFile = fs.readFileSync(configPath, 'utf-8');
-        gptConfig = JSON.parse(configFile) as GptConfig;
-        // Если FOLDER_ID все еще нужен для modelUri из gpt.json (если там плейсхолдер)
-        if (FOLDER_ID && gptConfig.modelUri.includes('YOUR_FOLDER_ID')) {
-             gptConfig.modelUri = gptConfig.modelUri.replace('YOUR_FOLDER_ID', FOLDER_ID);
+        const parsedConfig = JSON.parse(configFile) as Omit<GptConfig, 'systemPrompt'>; // Parse without systemPrompt
+        
+        // If FOLDER_ID is still needed for modelUri from gpt.json (if there's a placeholder)
+        if (FOLDER_ID && parsedConfig.modelUri.includes('YOUR_FOLDER_ID')) {
+             parsedConfig.modelUri = parsedConfig.modelUri.replace('YOUR_FOLDER_ID', FOLDER_ID);
         }
+        gptConfig = parsedConfig as GptConfig; // Cast to GptConfig after potential modifications
         return gptConfig;
     } catch (error) {
         console.error('Failed to load gpt.json:', error);
-        // Возвращаем конфигурацию по умолчанию или выбрасываем ошибку, если файл критичен
-        // Для примера, вернем конфигурацию по умолчанию, схожую с вашей предыдущей
         return {
             modelUri: `gpt://${FOLDER_ID || 'default_folder_id'}/yandexgpt-lite/latest`,
             completionOptions: {
@@ -49,16 +70,27 @@ function loadGptConfig(): GptConfig {
                 temperature: 0.6,
                 maxTokens: 20000
             },
-            systemPrompt: "Системный промпт по умолчанию, если gpt.json не найден."
-        };
+        } as GptConfig; // Cast to GptConfig
     }
 }
 
+function formatSystemPrompt(basePrompt: string, userData: UserDataItem[]): string {
+    let prompt = basePrompt;
+    userData.forEach(item => {
+        const placeholder = `{{${item.name}}}`;
+        prompt = prompt.replace(new RegExp(placeholder.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), item.value);
+    });
+    return prompt;
+}
+
 // Обновленная функция getYandexGPTResponse
-export async function getYandexGPTResponse(userMessages: {
-    role: 'user'|'assistant'; // Убираем 'system', так как он будет из gpt.json
-    text: string;
-}[]): Promise<{ text: string; totalUsage?: string } | null> {
+export async function getYandexGPTResponse(
+    userMessages: {
+        role: 'user' | 'assistant';
+        text: string;
+    }[],
+    userData: UserDataItem[] // Добавляем userData
+): Promise<{ text: string; totalUsage?: string } | null> {
     try {
         if (!currentIamToken) {
             console.error('IAM token not available');
@@ -71,6 +103,8 @@ export async function getYandexGPTResponse(userMessages: {
         }
 
         const config = loadGptConfig();
+        const baseSystemPrompt = loadSystemPrompt(); // Load from .md file
+        const systemPrompt = formatSystemPrompt(baseSystemPrompt, userData);
 
         console.log('Using IAM token type:', typeof currentIamToken);
         console.log('IAM token length:', currentIamToken.length);
@@ -85,7 +119,7 @@ export async function getYandexGPTResponse(userMessages: {
             messages: [
                 {
                     role: 'system',
-                    text: config.systemPrompt // Используем из конфига
+                    text: systemPrompt // Используем отформатированный systemPrompt
                 },
                 ...userMessages // Добавляем сообщения пользователя и ассистента
             ],

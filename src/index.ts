@@ -1,7 +1,7 @@
 import { Bot, Context, HearsContext, InlineKeyboard, MiddlewareFn } from 'grammy'; // webhookCallback удален, так как не используется напрямую в handler
 import fs from 'fs';
 import path from 'path';
-import { getYandexGPTResponse, setIamToken } from './gpt';
+import { getYandexGPTResponse, setIamToken } from './gpt'; // Убедитесь, что импорт корректен
 import { addChatMessage, ChatMessageType, clearChatMessages, closeDriver, ensureChatsTableExists, getDriver, getLastChatMessages } from './ydb'; // Добавьте этот импорт
 
 import { iam } from './iam';
@@ -167,45 +167,6 @@ bot.callbackQuery(/client_(.+)/, async (ctx) => {
   }
 });
 
-// Обработчик для приветствия
-// const greetingRegex = /^(привет|здравствуй|добрый день|доброе утро|добрый вечер|хелло|хай|салют)/i;
-// bot.hears(greetingRegex, async (ctx) => {
-//   console.log('Received event:', JSON.stringify(ctx));
-//   const businessConnectionId = ctx.businessConnectionId || ctx.message?.business_connection_id;
-//   if (businessConnectionId) {
-//     const now = new Date();
-//     const hour = now.getHours();
-//     let timeBasedGreeting = '';
-//     if (hour >= 5 && hour < 12) timeBasedGreeting = 'Доброе утро';
-//     else if (hour >= 12 && hour < 17) timeBasedGreeting = 'Добрый день';
-//     else if (hour >= 17 && hour < 22) timeBasedGreeting = 'Добрый вечер';
-//     else timeBasedGreeting = 'Доброй ночи';
-
-//     let userName = '';
-//     // Проверяем имя, добавляем с вероятностью 50% и если нет пробелов
-//     if (ctx.from?.first_name && 
-//         /^[а-яА-ЯёЁ]+$/.test(ctx.from.first_name) && // Только кириллица, без пробелов
-//         Math.random() < 0.5) { // Вероятность 50%
-//       userName = `, ${ctx.from.first_name}`;
-//     }
-
-//     const greetings = [
-//       `${timeBasedGreeting}${userName}`,
-//       `Здравствуй${userName}`,
-//       `Приветствую${userName}`,
-//       `Привет${userName}`,
-//       `${timeBasedGreeting.toLowerCase()}${userName}`
-//     ];
-//     let finalGreeting = greetings[Math.floor(Math.random() * greetings.length)];
-//     if (Math.random() < 0.7) finalGreeting += '!';
-//     try {
-//       await ctx.reply(finalGreeting);
-//     } catch (error) {
-//       console.error('Error sending message via business connection:', error);
-//     }
-//   }
-// });
-
 bot.hears(/^:(\w+)\s*(.*)$/i, async (ctx) => {
   const command = ctx.match[1]; // команда после ':'
   const textAfterColon = ctx.match[2]; // текст после команды и пробелов
@@ -329,14 +290,10 @@ bot.hears(yandexGptRegex, async (ctx) => {
                     text: v.message
                 }));
                 
-                // Добавляем текущее сообщение пользователя, если оно еще не в истории
-                // (зависит от того, когда вызывается addChatMessage относительно getLastChatMessages)
-                // Для простоты предположим, что addChatMessage уже вызван для текущего сообщения
-                // Если нет, то нужно добавить: gptMessages.push({ role: 'user', text: promptText });
-
-                // Системный промпт теперь будет загружен внутри getYandexGPTResponse
-                const gptResponse = await getYandexGPTResponse(gptMessages);
-
+                const currentUserData = loadUserData(); // Загружаем данные пользователя
+                // Исправленный вызов с передачей currentUserData
+                const gptResponse = await getYandexGPTResponse(gptMessages, currentUserData); 
+                
                 if (gptResponse && gptResponse.text) {
                 
 
@@ -373,59 +330,6 @@ let dbDriver: Driver | undefined;
 // Обновленный обработчик Cloud Function
 export async function handler(event: any, context?: any) {
   const iamToken = iam(context);
-  /*DB
-  console.log('Received event:', JSON.stringify(event));
-  const YDB_DATABASE = process.env.YDB_DATABASE;
-  if (!YDB_DATABASE) {
-    console.error('YDB_DATABASE is not set');
-    process.exit(1);
-  }
-  const YDB_ENDPOINT = process.env.YDB_ENDPOINT;
-  if (!YDB_ENDPOINT) {
-    console.error('YDB_ENDPOINT is not set');
-    process.exit(1);
-  }
-  const logger = {
-    info: console.info,
-    warn: console.warn,
-    error: console.error,
-    debug: console.debug,
-    fatal: console.error, // Map fatal to console.error
-    trace: console.trace,
-  } as Logger;
-
-  const authService = iamToken ? new TokenAuthService(iamToken) : new MetadataAuthService();
-  // iamToken 
-  //   ? new TokenAuthService(iamToken) // Используем TokenAuthService
-  //   : getCredentialsFromEnv(logger);
-    console.log('IAM token:', iamToken);
-  //const driver = new Driver({ connectionString: YDB_CONNECTION_STRING, authService, logger });
-  const driver = new Driver({
-  endpoint: YDB_ENDPOINT,
-  database: YDB_DATABASE,
-  authService, // автоматический IAM в Cloud Function
-});
-  try {
-    const timeout = 10000; // 10 seconds
-    if (!await driver.ready(timeout)) {
-      console.error(`Driver has not become ready in ${timeout}ms!`);
-      process.exit(1);
-    }
-    console.log('Driver is ready!');
-
-    await driver.tableClient.withSession(async (session) => {
-      console.log('Session created. Executing simple query...');
-      const result = await session.executeQuery('SELECT 1 AS test_value;');
-      console.log('Query executed. Result:', JSON.stringify(result));
-    });
-    console.log('Successfully connected and executed query.');
-  } catch (error) {
-    console.error('Error during YDB operation:', error);
-  } finally {
-    await driver.destroy();
-    console.log('Driver destroyed.');
-  }
-  */
   
     console.log('Received event:', JSON.stringify(event));
     
@@ -473,40 +377,24 @@ export async function handler(event: any, context?: any) {
   
 }
 
-
-// Пример использования в вашей логике:
-/*
-async function handleUpdate(ctx: any) {
-  // ... existing code ...
-  try {
-    // Пример: создаем таблицу, если она не существует (только для демонстрации)
-    // В реальном приложении структуру БД лучше создавать отдельно
-    const createTableQuery = `
-      CREATE TABLE IF NOT EXISTS example_table (
-        id Uint64,
-        value String,
-        PRIMARY KEY (id)
-      );
-    `;
-    await executeQuery(createTableQuery);
-    console.log('Table created or already exists.');
-
-    // Пример: вставка данных
-    const upsertQuery = `
-      UPSERT INTO example_table (id, value) VALUES (1, "Hello YDB!");
-    `;
-    await executeQuery(upsertQuery);
-    console.log('Data upserted.');
-
-    // Пример: чтение данных
-    const selectQuery = 'SELECT * FROM example_table WHERE id = 1;';
-    const result = await executeQuery(selectQuery);
-    console.log('Selected data:', JSON.stringify(result.resultSets[0]));
-
-    await ctx.reply('Проверил подключение к YDB и выполнил тестовые запросы!');
-  } catch (error) {
-    console.error('YDB Error:', error);
-    await ctx.reply('Ошибка при работе с YDB.');
-  }
+interface UserDataItem {
+    name: string;
+    value: string;
 }
-*/
+
+let userData: UserDataItem[] | null = null;
+
+function loadUserData(): UserDataItem[] {
+    if (userData) {
+        return userData;
+    }
+    try {
+        const userConfigPath = path.resolve(__dirname, 'user.json');
+        const userConfigFile = fs.readFileSync(userConfigPath, 'utf-8');
+        userData = JSON.parse(userConfigFile) as UserDataItem[];
+        return userData;
+    } catch (error) {
+        console.error('Failed to load user.json:', error);
+        return [];
+    }
+}
