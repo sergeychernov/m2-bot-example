@@ -7,7 +7,12 @@ import {
   TokenAuthService,
   MetadataAuthService,
   // Ydb, // Может понадобиться для доступа к Ydb.IValue, если не экспортируется иначе
+  declareType, // Добавим для типизации параметров запроса
+  TypedData, // Добавим для типизации параметров запроса
 } from 'ydb-sdk';
+import crypto from 'crypto'; // Добавили импорт crypto
+import fs from 'fs'; // Добавляем импорт fs
+import path from 'path'; // Добавляем импорт path
 
 const endpoint = process.env.YDB_ENDPOINT;
 const database = process.env.YDB_DATABASE;
@@ -198,6 +203,131 @@ export async function clearChatMessages(chatId: string): Promise<void> {
         throw error;
     }
 }
+
+// --- Начало новых функций для работы с промптами ---
+
+export interface Prompt {
+  promptId: string;
+  promptText: string;
+  promptType: string;
+  createdAt: Date;
+}
+
+export async function ensurePromptsTableExists(iamToken?: string): Promise<void> {
+  const currentDriver = await getDriver(iamToken);
+  try {
+    await currentDriver.tableClient.withSession(async (session) => {
+      try {
+        await session.describeTable('prompts');
+        logger.info("Table 'prompts' already exists.");
+      } catch (error: any) {
+        logger.info("Table 'prompts' not found, creating...");
+        await session.createTable(
+          'prompts',
+          new TableDescription()
+            .withColumn(new Column('promptId', Types.UTF8))
+            .withColumn(new Column('promptText', Types.UTF8))
+            .withColumn(new Column('promptType', Types.UTF8))
+            .withColumn(new Column('createdAt', Types.TIMESTAMP))
+            .withPrimaryKeys('promptId')
+        );
+        logger.info("Table 'prompts' created successfully.");
+
+        // Добавляем базовый промпт из файла после создания таблицы
+        try {
+          const promptFilePath = path.resolve(__dirname, 'system_prompt.md');
+          const initialPromptText = fs.readFileSync(promptFilePath, 'utf-8');
+          // Вызываем addPrompt внутри той же сессии, если это возможно и эффективно,
+          // или просто вызываем как отдельную транзакцию.
+          // Для простоты здесь вызываем как отдельную операцию.
+          await addPrompt(initialPromptText, 'base', iamToken); 
+          logger.info('Initial base prompt added to DB from system_prompt.md after table creation.');
+        } catch (fileError) {
+          logger.error('Failed to read system_prompt.md to populate initial prompt after table creation:', fileError);
+        }
+      }
+    });
+  } catch (error) {
+    logger.error('Failed to ensure prompts table exists:', error);
+    throw error;
+  }
+}
+
+export async function addPrompt(
+  promptText: string,
+  promptType: string,
+  iamToken?: string
+): Promise<string> {
+  const currentDriver = await getDriver(iamToken);
+  const promptId = crypto.randomUUID(); // Генерируем UUID для promptId
+  const createdAt = new Date();
+
+  try {
+    await currentDriver.tableClient.withSession(async (session) => {
+      const query = `
+        DECLARE $promptId AS Utf8;
+        DECLARE $promptText AS Utf8;
+        DECLARE $promptType AS Utf8;
+        DECLARE $createdAt AS Timestamp;
+
+        UPSERT INTO prompts (promptId, promptText, promptType, createdAt)
+        VALUES ($promptId, $promptText, $promptType, $createdAt);
+      `;
+
+      await session.executeQuery(query, {
+        $promptId: { type: Types.UTF8, value: { textValue: promptId } },
+        $promptText: { type: Types.UTF8, value: { textValue: promptText } },
+        $promptType: { type: Types.UTF8, value: { textValue: promptType } },
+        $createdAt: { type: Types.TIMESTAMP, value: { uint64Value: createdAt.getTime() * 1000 } }, 
+      });
+      logger.info(`Prompt ${promptId} of type ${promptType} added to 'prompts' table.`);
+    });
+    return promptId;
+  } catch (error) {
+    logger.error('Failed to add prompt:', error);
+    throw error;
+  }
+}
+
+export async function getLatestPromptByType(promptType: string, iamToken?: string): Promise<Prompt | null> {
+  const currentDriver = await getDriver(iamToken);
+  try {
+    return await currentDriver.tableClient.withSession(async (session) => {
+      const query = `
+        DECLARE $promptType AS Utf8;
+
+        SELECT promptId, promptText, promptType, createdAt
+        FROM prompts
+        WHERE promptType = $promptType
+        ORDER BY createdAt DESC
+        LIMIT 1;
+      `;
+
+      const { resultSets } = await session.executeQuery(query, {
+        $promptType: { type: Types.UTF8, value: { textValue: promptType } },
+      });
+
+      if (resultSets[0]?.rows && resultSets[0].rows.length > 0) {
+        const row = resultSets[0].rows[0];
+        if (row.items) {
+          return {
+            promptId: row.items[0].textValue || '',
+            promptText: row.items[1].textValue || '',
+            promptType: row.items[2].textValue || '',
+            createdAt: new Date(Number(row.items[3].uint64Value) / 1000), // YDB timestamp is in microseconds
+          };
+        }
+      }
+      logger.info(`No prompt found for type ${promptType}.`);
+      return null;
+    });
+  } catch (error) {
+    logger.error(`Failed to get latest prompt for type ${promptType}:`, JSON.stringify(error));
+    throw error;
+  }
+}
+
+// --- Конец новых функций для работы с промптами ---
 
 export async function closeDriver() {
   if (driver) {

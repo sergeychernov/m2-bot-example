@@ -1,5 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
+import { getLatestPromptByType } from './ydb'; // Добавляем импорт
 
 // ID вашего каталога в Yandex Cloud
 const FOLDER_ID = process.env.YC_FOLDER_ID; // Оставляем, если используется для x-folder-id или если modelUri в json не полный
@@ -28,20 +29,21 @@ interface UserDataItem {
 }
 
 let gptConfig: GptConfig | null = null;
-let systemPromptContent: string | null = null; // Cache for the markdown content
+// let systemPromptContent: string | null = null; // Cache for the markdown content - УДАЛЯЕМ
 
-function loadSystemPrompt(): string {
-    if (systemPromptContent) {
-        return systemPromptContent;
-    }
+async function loadSystemPrompt(iamToken?: string): Promise<string> { // Делаем асинхронной и принимаем iamToken
     try {
-        const promptPath = path.resolve(__dirname, 'system_prompt.md');
-        systemPromptContent = fs.readFileSync(promptPath, 'utf-8');
-        return systemPromptContent;
-    } catch (error) {
-        console.error('Failed to load system_prompt.md:', error);
+        const latestPrompt = await getLatestPromptByType('base', iamToken);
+        if (latestPrompt && latestPrompt.promptText) {
+            return latestPrompt.promptText;
+        }
+        console.warn('No base prompt found in DB, using fallback.');
         // Fallback prompt or re-throw error
-        return "Системный промпт по умолчанию, если system_prompt.md не найден. {{Имя риелтора}} {{Опыт}}"; 
+        return "Системный промпт по умолчанию, если prompt не найден в БД. {{Имя риелтора}} {{Опыт}}"; 
+    } catch (error) {
+        console.error('Failed to load system_prompt from DB:', error);
+        // Fallback prompt or re-throw error
+        return "Системный промпт по умолчанию из-за ошибки загрузки. {{Имя риелтора}} {{Опыт}}"; 
     }
 }
 
@@ -98,8 +100,8 @@ export async function getYandexGPTResponse(
         }
 
         const config = loadGptConfig();
-        const baseSystemPrompt = loadSystemPrompt(); // Load from .md file
-        const systemPrompt = formatSystemPrompt(baseSystemPrompt, [...userData, { name: 'profile', value: userData.map(i=>`- ${i.value}: ${i.value}`).join('\n') }]);
+        const baseSystemPrompt = await loadSystemPrompt(currentIamToken); // Загружаем из БД
+        const systemPrompt = formatSystemPrompt(baseSystemPrompt, [...userData, { name: 'profile', value: userData.map(i=>`- ${i.name}: ${i.value}`).join('\n') }]); // Исправлено item.value на item.name
         console.log('Using IAM token type:', typeof currentIamToken);
         console.log('IAM token length:', currentIamToken.length);
         console.log('IAM token starts with:', currentIamToken.substring(0, 10));

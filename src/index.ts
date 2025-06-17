@@ -1,8 +1,19 @@
-import { Bot, Context, HearsContext, InlineKeyboard, MiddlewareFn } from 'grammy'; // webhookCallback удален, так как не используется напрямую в handler
-import fs from 'fs';
-import path from 'path';
-import { getYandexGPTResponse, setIamToken } from './gpt'; // Убедитесь, что импорт корректен
-import { addChatMessage, ChatMessageType, clearChatMessages, closeDriver, ensureChatsTableExists, getDriver, getLastChatMessages } from './ydb'; // Добавьте этот импорт
+import { Bot, Context, HearsContext, InlineKeyboard, MiddlewareFn } from 'grammy'; 
+import fs from 'fs'; // fs больше не нужен здесь для system_prompt.md
+import path from 'path'; // path больше не нужен здесь для system_prompt.md
+import { getYandexGPTResponse, setIamToken } from './gpt'; 
+import { 
+    addChatMessage, 
+    ChatMessageType, 
+    clearChatMessages, 
+    closeDriver, 
+    ensureChatsTableExists, 
+    getDriver, 
+    getLastChatMessages,
+    ensurePromptsTableExists, 
+    // addPrompt, // addPrompt больше не вызывается напрямую отсюда
+    // getLatestPromptByType as getLatestBasePrompt // getLatestBasePrompt больше не нужен здесь для проверки
+} from './ydb'; 
 
 import { iam } from './iam';
 import { Driver } from 'ydb-sdk';
@@ -328,10 +339,11 @@ bot.hears(yandexGptRegex, async (ctx) => {
 
 
 
-// ID вашего каталога в Yandex Cloud
-const FOLDER_ID = process.env.YC_FOLDER_ID; // Лучше всего передавать через переменные окружения функции
+const FOLDER_ID = process.env.YC_FOLDER_ID; 
 
 let dbDriver: Driver | undefined;
+// let initialPromptAdded = false; // Удаляем этот флаг
+
 // Обновленный обработчик Cloud Function
 export async function handler(event: any, context?: any) {
   const iamToken = iam(context);
@@ -346,7 +358,8 @@ export async function handler(event: any, context?: any) {
         }
         if (!dbDriver) {
           dbDriver = await getDriver(iamToken || undefined);
-          await ensureChatsTableExists();
+          await ensureChatsTableExists(); 
+          await ensurePromptsTableExists(); // Эта функция теперь сама добавит начальный промпт при необходимости
         }
 
         if (!event.body) {
