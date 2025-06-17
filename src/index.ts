@@ -1,4 +1,4 @@
-import { Bot, InlineKeyboard } from 'grammy'; // webhookCallback удален, так как не используется напрямую в handler
+import { Bot, Context, HearsContext, InlineKeyboard, MiddlewareFn } from 'grammy'; // webhookCallback удален, так как не используется напрямую в handler
 import fs from 'fs';
 import path from 'path';
 import { getYandexGPTResponse, setIamToken } from './gpt';
@@ -206,22 +206,55 @@ bot.callbackQuery(/client_(.+)/, async (ctx) => {
 //   }
 // });
 
-// Обработчик команды для очистки сообщений чата
-bot.hears(/^clear:/, async (ctx) => {
-  const currentChatId = ctx.chat.id.toString();
+bot.hears(/^:(\w+)\s*(.*)$/i, async (ctx) => {
+  const command = ctx.match[1]; // команда после ':'
+  const textAfterColon = ctx.match[2]; // текст после команды и пробелов
+  switch (command) {
+    case 'clear': {
+      await clearHandler(ctx);
+    } break;
+    case 'last': {
+      let n = 20;
+      try {
+        n = parseInt(textAfterColon);
+        if (isNaN(n)) {
+          n = 20;
+        }
+      } catch (error) {
+        console.log(`textAfterColon: ${textAfterColon}`);
+        console.error('Error parsing last count:', JSON.stringify(error));
+      }
+      await lastHandler(ctx, n);
+    } break;
+    default: {
+      await helpHandler(ctx);
+    } break;
+  }
+});
+
+async function helpHandler(ctx: Context) {
+  await ctx.reply('Доступные команды: \n /clear: - очистить историю чата \n /last: - показать последние 10 сообщений');
+}
+
+async function clearHandler(ctx: Context) {
+  const currentChatId = ctx.chat?.id.toString();
   try {
+    if (currentChatId) {
       await clearChatMessages(currentChatId);
       await ctx.reply(`Все сообщения для чата ${currentChatId} были удалены.`);
       console.info(`Successfully cleared messages for chatId: ${currentChatId}`);
+    }
+      
   } catch (error) {
       console.error(`Error processing clear_chat:`, error);
       await ctx.reply(`Произошла ошибка при удалении сообщений для чата ${currentChatId}.`);
   }
-});
+}
 
-// Обработчик для команды 'last:'
-const lastMessagesRegex = /^last:/i;
-bot.hears(lastMessagesRegex, async (ctx) => {
+// Обработчик команды для очистки сообщений чата
+bot.hears(/^clear:/, clearHandler);
+
+async function lastHandler(ctx: Context, n = 20): Promise<void> {
   console.log('Received "last:" command:', JSON.stringify(ctx));
   const chatId = ctx.chat?.id;
 
@@ -235,14 +268,14 @@ bot.hears(lastMessagesRegex, async (ctx) => {
     // В вашем текущем getLastTenChatMessages iamToken опционален, 
     // но если бы он был обязателен, его нужно было бы получить здесь, 
     // например, из context в serverless-функции или другим способом.
-    const messages = await getLastChatMessages(chatId.toString(), 20);
+    const messages = await getLastChatMessages(chatId.toString(), n);
 
     if (messages.length === 0) {
       await ctx.reply('Сообщений в этом чате пока нет.');
       return;
     }
 
-    let replyText = 'Последние 10 сообщений:\n';
+    let replyText = `Последние ${n} сообщений:\n`;
     messages.forEach(msg => {
       const date = new Date(msg.timestamp); // YDB timestamp is in microseconds
       replyText += `\n[${date.toLocaleString()}] ${msg.type}: ${msg.message}`;
@@ -251,10 +284,14 @@ bot.hears(lastMessagesRegex, async (ctx) => {
     await ctx.reply(replyText);
 
   } catch (error) {
-    console.error('Error fetching last ten chat messages:', error);
+    console.error(`Error fetching last ${n} chat messages:`, JSON.stringify(error));
     await ctx.reply('Произошла ошибка при получении последних сообщений.');
   }
-});
+}
+
+// Обработчик для команды 'last:'
+const lastMessagesRegex = /^last:/i;
+bot.hears(lastMessagesRegex, (ctx)=>lastHandler(ctx));
 
 
 // Новый обработчик для сообщений, начинающихся с 'y:'

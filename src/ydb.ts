@@ -157,17 +157,16 @@ export async function getLastChatMessages(chatId: string, limit: number, iamToke
               messageId: row.items[1].textValue || '',
               message: row.items[2].textValue || '',
               type: (row.items[3].textValue || 'client') as ChatMessageType, // Приведение типа, возможно, потребуется более строгая проверка
-              // YDB возвращает timestamp как микросекунды (uint64), преобразуем в Date
               timestamp: new Date(Number(row.items[4].uint64Value) / 1000), 
             });
           }
         }
       }
-      logger.info(`Retrieved last 10 messages for chat ${chatId}. Found: ${messages.length}`);
+      logger.info(`Retrieved last ${limit} messages for chat ${chatId}. Found: ${messages.length}`);
       return messages.reverse(); // Возвращаем в хронологическом порядке (старые -> новые)
     });
   } catch (error) {
-    logger.error(`Failed to get last ten chat messages for chatId ${chatId}:`, error);
+    logger.error(`Failed to get last ${limit} chat messages for chatId ${chatId}:`, JSON.stringify(error));
     throw error;
   }
 }
