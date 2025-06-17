@@ -194,7 +194,12 @@ bot.hears(/^:(\w+)\s*(.*)$/i, async (ctx) => {
 });
 
 async function helpHandler(ctx: Context) {
-  await ctx.reply('Доступные команды: \n /clear: - очистить историю чата \n /last: - показать последние 10 сообщений');
+  await ctx.reply(
+    'Доступные команды:\n'
+    + '*:clear* \\- очистить историю чата\n'
+    + '*:last n* \\- показать последние n сообщений',
+    { parse_mode: 'MarkdownV2' }
+  );
 }
 
 async function clearHandler(ctx: Context) {

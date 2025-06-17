@@ -3,7 +3,6 @@ import * as path from 'path';
 
 // ID вашего каталога в Yandex Cloud
 const FOLDER_ID = process.env.YC_FOLDER_ID; // Оставляем, если используется для x-folder-id или если modelUri в json не полный
-// const YANDEX_GPT_MODEL_LITE_URI = `gpt://${FOLDER_ID}/yandexgpt-lite/latest`; // Удаляем или комментируем
 
 // Глобальная переменная для хранения IAM токена из контекста
 // Эта переменная будет устанавливаться из index.ts
@@ -14,7 +13,7 @@ export function setIamToken(token: string | null) {
 }
 
 interface GptConfig {
-    modelUri: string;
+    model: string;
     completionOptions: {
         stream: boolean;
         temperature: number;
@@ -55,16 +54,12 @@ function loadGptConfig(): GptConfig {
         const configFile = fs.readFileSync(configPath, 'utf-8');
         const parsedConfig = JSON.parse(configFile) as Omit<GptConfig, 'systemPrompt'>; // Parse without systemPrompt
         
-        // If FOLDER_ID is still needed for modelUri from gpt.json (if there's a placeholder)
-        if (FOLDER_ID && parsedConfig.modelUri.includes('YOUR_FOLDER_ID')) {
-             parsedConfig.modelUri = parsedConfig.modelUri.replace('YOUR_FOLDER_ID', FOLDER_ID);
-        }
         gptConfig = parsedConfig as GptConfig; // Cast to GptConfig after potential modifications
         return gptConfig;
     } catch (error) {
         console.error('Failed to load gpt.json:', error);
         return {
-            modelUri: `gpt://${FOLDER_ID || 'default_folder_id'}/yandexgpt-lite/latest`,
+            model: "/yandexgpt-lite/latest",
             completionOptions: {
                 stream: false,
                 temperature: 0.6,
@@ -104,8 +99,7 @@ export async function getYandexGPTResponse(
 
         const config = loadGptConfig();
         const baseSystemPrompt = loadSystemPrompt(); // Load from .md file
-        const systemPrompt = formatSystemPrompt(baseSystemPrompt, userData);
-
+        const systemPrompt = formatSystemPrompt(baseSystemPrompt, [...userData, { name: 'profile', value: userData.map(i=>`- ${i.value}: ${i.value}`).join('\n') }]);
         console.log('Using IAM token type:', typeof currentIamToken);
         console.log('IAM token length:', currentIamToken.length);
         console.log('IAM token starts with:', currentIamToken.substring(0, 10));
@@ -114,7 +108,7 @@ export async function getYandexGPTResponse(
         const url = 'https://llm.api.cloud.yandex.net/foundationModels/v1/completion';
 
         const requestBody = {
-            modelUri: config.modelUri, // Используем из конфига
+            modelUri: `gpt://${FOLDER_ID}${config.model}`, // Используем из конфига
             completionOptions: config.completionOptions, // Используем из конфига
             messages: [
                 {
