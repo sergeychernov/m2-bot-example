@@ -57,6 +57,10 @@ async function ensurePromptsTableExists(iamToken?: string): Promise<void> {
 			  .withColumn(new Column('promptText', Types.UTF8))
 			  .withColumn(new Column('promptType', Types.UTF8))
 			  .withColumn(new Column('createdAt', Types.TIMESTAMP))
+			  .withColumn(new Column('model', Types.UTF8)) // Новое поле
+			  .withColumn(new Column('stream', Types.BOOL)) // Новое поле
+			  .withColumn(new Column('temperature', Types.DOUBLE)) // Новое поле
+			  .withColumn(new Column('maxTokens', Types.INT64)) // Новое поле
 			  .withPrimaryKeys('promptId')
 		  );
 		  logger.info("Table 'prompts' created successfully.");
@@ -65,11 +69,20 @@ async function ensurePromptsTableExists(iamToken?: string): Promise<void> {
 		  try {
 			const promptFilePath = path.resolve(__dirname, 'system_prompt.md');
 			const initialPromptText = fs.readFileSync(promptFilePath, 'utf-8');
-			// Вызываем addPrompt внутри той же сессии, если это возможно и эффективно,
-			// или просто вызываем как отдельную транзакцию.
-			// Для простоты здесь вызываем как отдельную операцию.
-			await addPrompt(initialPromptText, 'base', iamToken); 
-			logger.info('Initial base prompt added to DB from system_prompt.md after table creation.');
+			const gptConfigPath = path.resolve(__dirname, 'gpt.json');
+			const gptConfigFile = fs.readFileSync(gptConfigPath, 'utf-8');
+			const gptConfig = JSON.parse(gptConfigFile);
+
+			await addPrompt(
+			  initialPromptText, 
+			  'base', 
+			  gptConfig.model, 
+			  gptConfig.completionOptions.stream, 
+			  gptConfig.completionOptions.temperature, 
+			  gptConfig.completionOptions.maxTokens, 
+			  iamToken
+			); 
+			logger.info('Initial base prompt added to DB from system_prompt.md and gpt.json after table creation.');
 		  } catch (fileError) {
 			logger.error('Failed to read system_prompt.md to populate initial prompt after table creation:', fileError);
 		  }

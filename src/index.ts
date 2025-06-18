@@ -361,24 +361,63 @@ export async function handler(event: any, context?: any) {
       return { statusCode: 200, body: 'DB initialized' };
     }
     if (event.httpMethod === 'GET') {//редактор глобальных настроек
-      const {promptText} = (await getLatestPromptByType('base')) as Prompt;
+      const currentPrompt = await getLatestPromptByType('base') as Prompt;
+      
+      // Default values if no prompt is found (e.g., first run before setup-db adds one)
+      const promptText = currentPrompt?.promptText || '';
+      const model = currentPrompt?.model || '/yandexgpt-lite/latest';
+      const stream = currentPrompt?.stream || false;
+      const temperature = currentPrompt?.temperature || 0.6;
+      const maxTokens = currentPrompt?.maxTokens || 20000;
         return {
           statusCode: 200,
           headers: { 'Content-Type': 'text/html; charset=utf-8' },
           body: `
             <!DOCTYPE html>
-            <html lang="ru">
-            <head>
-              <meta charset="UTF-8">
-              <title>Большое текстовое поле</title>
-            </head>
-            <body>
-              <form method="POST">
-                <textarea name="text" rows="30" cols="100" placeholder="Вставьте сюда текст...">${promptText}</textarea><br/>
-                <button type="submit">Отправить</button>
-              </form>
-            </body>
-            </html>
+          <html lang="ru">
+          <head>
+            <meta charset="UTF-8">
+            <title>Настройки GPT Промпта</title>
+            <style>
+              body { font-family: sans-serif; margin: 20px; }
+              label { display: block; margin-top: 10px; }
+              input[type="text"], input[type="number"], textarea {
+                width: 100%;
+                padding: 8px;
+                margin-top: 5px;
+                box-sizing: border-box;
+              }
+              input[type="checkbox"] { margin-top: 5px; }
+              button { margin-top: 20px; padding: 10px 15px; }
+            </style>
+          </head>
+          <body>
+            <h1>Настройки GPT Промпта (тип: base)</h1>
+            <form method="POST">
+              <div>
+                <label for="promptText">Текст промпта:</label>
+                <textarea id="promptText" name="promptText" rows="15" cols="100" placeholder="Вставьте сюда текст промпта...">${promptText}</textarea>
+              </div>
+              <div>
+                <label for="model">Модель:</label>
+                <input type="text" id="model" name="model" value="${model}">
+              </div>
+              <div>
+                <label for="temperature">Temperature:</label>
+                <input type="number" id="temperature" name="temperature" value="${temperature}" step="0.1">
+              </div>
+              <div>
+                <label for="maxTokens">Max Tokens:</label>
+                <input type="number" id="maxTokens" name="maxTokens" value="${maxTokens}">
+              </div>
+              <div>
+                <label for="stream">Stream:</label>
+                <input type="checkbox" id="stream" name="stream" ${stream ? 'checked' : ''}>
+              </div>
+              <button type="submit">Сохранить настройки</button>
+            </form>
+          </body>
+          </html>
           `,
         };
     }
@@ -393,12 +432,17 @@ export async function handler(event: any, context?: any) {
         let textData = '';
         if (bodyString) {
           const params = new URLSearchParams(bodyString);
-          const rawTextData = params.get('text');
-          if (rawTextData) {
-            textData = rawTextData.replace(/\r\n/g, '\n'); // Нормализация переводов строк
-          }
+          const promptText = params.get('promptText')?.replace(/\r\n/g, '\n') || '';
+          const model = params.get('model') || '/yandexgpt-lite/latest'; // Default if not provided
+          const temperatureStr = params.get('temperature');
+          const temperature = temperatureStr ? parseFloat(temperatureStr) : 0.6; // Default if not provided or invalid
+          const maxTokensStr = params.get('maxTokens');
+          const maxTokens = maxTokensStr ? parseInt(maxTokensStr, 10) : 20000; // Default if not provided or invalid
+          // For checkboxes, the value is 'on' if checked, or null if not present in form data
+          const stream = params.get('stream') === 'on'; // Default if not provided or not 'on'
+          await addPrompt(promptText, 'base',model, stream, temperature, maxTokens); 
         }
-        await addPrompt(textData, 'base'); // Используем saveOrUpdatePrompt как в предыдущем примере
+        // Используем saveOrUpdatePrompt как в предыдущем примере
         const formUrl = event.url; 
 
         return {
@@ -444,11 +488,11 @@ export async function handler(event: any, context?: any) {
         await bot.handleUpdate(update);
         return { statusCode: 200, body: 'OK' };
 
-    } catch (err: any) {
-        console.error('Error in handler:', err);
-        const errorMessage = err.message || 'Unknown error';
-        const errorStack = err.stack || 'No stack trace';
-        console.error(`Error message: ${errorMessage}, Stack: ${errorStack}`);
+    } catch (error: any) {
+        console.error('Error in handler:', JSON.stringify(error));
+        const errorMessage = error.message || 'Unknown error';
+        const errorStack = error.stack || 'No stack trace';
+        console.error(`Error message: ${errorMessage}, Stack: ${JSON.stringify(errorStack)}`);
         return { statusCode: 500, body: `Error processing update: ${errorMessage}` };
     }
   
