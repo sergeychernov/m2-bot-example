@@ -4,21 +4,18 @@ import path from 'path'; // path больше не нужен здесь для 
 import { getYandexGPTResponse, setIamToken } from './gpt'; 
 import { 
     addChatMessage, 
-    addPrompt, 
     ChatMessageType, 
     clearChatMessages, 
     getDriver, 
     getLastChatMessages,
-    getLatestPromptByType,
-    Prompt,
-    // addPrompt, // addPrompt больше не вызывается напрямую отсюда
-    // getLatestPromptByType as getLatestBasePrompt // getLatestBasePrompt больше не нужен здесь для проверки
 } from './ydb'; 
 
 import { iam } from './iam';
 import { Driver } from 'ydb-sdk';
 import { imitateTyping } from './telegram-utils';
 import { setupDatabase } from './setup-db';
+import { renderSettingsPage } from './settings.fe';
+import { handleSettingsPost } from './settings.be'; // <<< Добавлен этот импорт
 
 const botToken = process.env.BOT_TOKEN;
 if (!botToken) {
@@ -361,65 +358,7 @@ export async function handler(event: any, context?: any) {
       return { statusCode: 200, body: 'DB initialized' };
     }
     if (event.httpMethod === 'GET') {//редактор глобальных настроек
-      const currentPrompt = await getLatestPromptByType('base') as Prompt;
-      
-      // Default values if no prompt is found (e.g., first run before setup-db adds one)
-      const promptText = currentPrompt?.promptText || '';
-      const model = currentPrompt?.model || '/yandexgpt-lite/latest';
-      const stream = currentPrompt?.stream || false;
-      const temperature = currentPrompt?.temperature || 0.6;
-      const maxTokens = currentPrompt?.maxTokens || 20000;
-        return {
-          statusCode: 200,
-          headers: { 'Content-Type': 'text/html; charset=utf-8' },
-          body: `
-            <!DOCTYPE html>
-          <html lang="ru">
-          <head>
-            <meta charset="UTF-8">
-            <title>Настройки GPT Промпта</title>
-            <style>
-              body { font-family: sans-serif; margin: 20px; }
-              label { display: block; margin-top: 10px; }
-              input[type="text"], input[type="number"], textarea {
-                width: 100%;
-                padding: 8px;
-                margin-top: 5px;
-                box-sizing: border-box;
-              }
-              input[type="checkbox"] { margin-top: 5px; }
-              button { margin-top: 20px; padding: 10px 15px; }
-            </style>
-          </head>
-          <body>
-            <h1>Настройки GPT Промпта (тип: base)</h1>
-            <form method="POST">
-              <div>
-                <label for="promptText">Текст промпта:</label>
-                <textarea id="promptText" name="promptText" rows="15" cols="100" placeholder="Вставьте сюда текст промпта...">${promptText}</textarea>
-              </div>
-              <div>
-                <label for="model">Модель:</label>
-                <input type="text" id="model" name="model" value="${model}">
-              </div>
-              <div>
-                <label for="temperature">Temperature:</label>
-                <input type="number" id="temperature" name="temperature" value="${temperature}" step="0.1">
-              </div>
-              <div>
-                <label for="maxTokens">Max Tokens:</label>
-                <input type="number" id="maxTokens" name="maxTokens" value="${maxTokens}">
-              </div>
-              <div>
-                <label for="stream">Stream:</label>
-                <input type="checkbox" id="stream" name="stream" ${stream ? 'checked' : ''}>
-              </div>
-              <button type="submit">Сохранить настройки</button>
-            </form>
-          </body>
-          </html>
-          `,
-        };
+      return await renderSettingsPage();
     }
     if (!event.body) {
       console.error('Event body is missing');
@@ -427,40 +366,7 @@ export async function handler(event: any, context?: any) {
   }
     if (event.isBase64Encoded) {//бекенд глобальных настроек
       if (event.httpMethod === 'POST') {
-        let bodyString = Buffer.from(event.body, 'base64').toString('utf-8');
-    
-        let textData = '';
-        if (bodyString) {
-          const params = new URLSearchParams(bodyString);
-          const promptText = params.get('promptText')?.replace(/\r\n/g, '\n') || '';
-          const model = params.get('model') || '/yandexgpt-lite/latest'; // Default if not provided
-          const temperatureStr = params.get('temperature');
-          const temperature = temperatureStr ? parseFloat(temperatureStr) : 0.6; // Default if not provided or invalid
-          const maxTokensStr = params.get('maxTokens');
-          const maxTokens = maxTokensStr ? parseInt(maxTokensStr, 10) : 20000; // Default if not provided or invalid
-          // For checkboxes, the value is 'on' if checked, or null if not present in form data
-          const stream = params.get('stream') === 'on'; // Default if not provided or not 'on'
-          await addPrompt(promptText, 'base',model, stream, temperature, maxTokens); 
-        }
-        // Используем saveOrUpdatePrompt как в предыдущем примере
-        const formUrl = event.url; 
-
-        return {
-        statusCode: 200,
-        headers: { 'Content-Type': 'text/html; charset=utf-8' }, // Изменяем Content-Type
-        body: `
-          <html>
-            <head>
-              <meta http-equiv="refresh" content="3;url=${formUrl}">
-              <title>Сохранение данных</title>
-            </head>
-            <body>
-              <p>Форма сохранена. Размер: ${textData.length}.</p>
-              <p>Вы будете перенаправлены обратно через 3 секунды. Если нет, нажмите <a href="${formUrl}">сюда</a>.</p>
-            </body>
-          </html>
-        `,
-      };
+      return await handleSettingsPost(event);
       }
     }
         if (!botInitialized) {
