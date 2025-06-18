@@ -356,11 +356,11 @@ export async function handler(event: any, context?: any) {
     if (!dbDriver) {
       dbDriver = await getDriver(iamToken || undefined);
     }
-    if (event.setup_database === true) {
+    if (event.setup_database === true) {// создание таблиц
       await setupDatabase();
       return { statusCode: 200, body: 'DB initialized' };
     }
-    if (event.httpMethod === 'GET') {
+    if (event.httpMethod === 'GET') {//редактор глобальных настроек
       const {promptText} = (await getLatestPromptByType('base')) as Prompt;
         return {
           statusCode: 200,
@@ -382,7 +382,11 @@ export async function handler(event: any, context?: any) {
           `,
         };
     }
-    if (event.isBase64Encoded) {
+    if (!event.body) {
+      console.error('Event body is missing');
+      return { statusCode: 400, body: 'Event body is missing' };
+  }
+    if (event.isBase64Encoded) {//бекенд глобальных настроек
       if (event.httpMethod === 'POST') {
         let bodyString = Buffer.from(event.body, 'base64').toString('utf-8');
     
@@ -420,10 +424,7 @@ export async function handler(event: any, context?: any) {
         }
         
 
-        if (!event.body) {
-            console.error('Event body is missing');
-            return { statusCode: 400, body: 'Event body is missing' };
-        }
+        
         
         let updateString = event.body;
         if (typeof event.body !== 'string') {
