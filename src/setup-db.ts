@@ -21,7 +21,8 @@ async function ensureChatsTableExists(iamToken?: string): Promise<void> {
 			  .withColumn(new Column('messageId', Types.UTF8))
 			  .withColumn(new Column('message', Types.UTF8))
 			  .withColumn(new Column('timestamp', Types.TIMESTAMP))
-			  .withColumn(new Column('type', Types.UTF8)) // Добавлено новое поле type
+			  .withColumn(new Column('type', Types.UTF8))
+			  .withColumn(new Column('realtorId', Types.UTF8)) // Добавлено новое поле realtorId
 			  .withPrimaryKeys('chatId', 'messageId')
 		  );
 		  logger.info("Table 'chats' created successfully.");
@@ -106,28 +107,26 @@ async function ensureMigrationsTableExists(iamToken?: string): Promise<void> {
 	}
   }
 
-async function getAppliedMigrations(driver: Driver): Promise<number[]> {
-  const appliedVersions: number[] = [];
-  try {
+async function getAppliedMigrations(driver: Driver): Promise<Set<number>> {
+    const query = `SELECT version FROM \`migrations\`;`;
+    let appliedVersions: number[] = [];
+
+    logger.info('Fetching applied migrations...');
+
     await driver.tableClient.withSession(async (session) => {
-      const query = `SELECT version FROM migrations;`;
-      const { resultSets } = await session.executeQuery(query);
-      if (resultSets[0]?.rows) {
-        for (const row of resultSets[0].rows) {
-          if (row.items && row.items[0].uint64Value) {
-            appliedVersions.push(Number(row.items[0].uint64Value));
-          }
+        const { resultSets } = await session.executeQuery(query);
+        if (resultSets[0]?.rows) {
+            appliedVersions = resultSets[0].rows.map(row => {
+                // Assuming 'version' is stored as UINT64, it might come back as a string or a number depending on the driver/SDK version.
+                // Ensure it's parsed to a number if it's not already.
+                const versionValue = row.items![0].uint64Value;
+                return typeof versionValue === 'string' ? parseInt(versionValue, 10) : Number(versionValue);
+            });
         }
-      }
     });
-  } catch (error) {
-    logger.error('Failed to get applied migrations:', error);
-    // Если таблица миграций еще не существует, это нормально на первом запуске
-    if (!(error instanceof Error && error.message.includes('Cannot find table')) && !(error instanceof Error && error.message.includes('SchemeError'))) {
-        throw error;
-    }
-  }
-  return appliedVersions;
+
+    logger.info(`Found applied migrations: ${appliedVersions.join(', ')}`);
+    return new Set(appliedVersions);
 }
 
 async function addMigrationRecord(driver: Driver, version: number, name: string): Promise<void> {
@@ -153,23 +152,28 @@ async function addMigrationRecord(driver: Driver, version: number, name: string)
 }
 
 async function applyMigrations(iamToken?: string): Promise<void> {
-  const driver = await getDriver(iamToken);
-  const appliedVersions = await getAppliedMigrations(driver);
-  logger.info(`Applied migration versions: ${appliedVersions.join(', ')}`);
+	const driver = await getDriver(iamToken);
+    logger.info('Applying migrations...');
+    const appliedVersions = await getAppliedMigrations(driver);
 
-  for (const migration of migrations) {
-    if (!appliedVersions.includes(migration.version)) {
-      logger.info(`Applying migration ${migration.version}: ${migration.name}...`);
-      try {
-        await migration.up(driver);
-        await addMigrationRecord(driver, migration.version, migration.name);
-        logger.info(`Migration ${migration.version}: ${migration.name} applied successfully.`);
-      } catch (error) {
-        logger.error(`Failed to apply migration ${migration.version}: ${migration.name}:`, error);
-        throw error; // Останавливаем процесс, если миграция не удалась
-      }
+    for (const migration of migrations) {
+        if (!appliedVersions.has(migration.version)) {
+            try {
+                logger.info(`Applying migration ${migration.version}: ${migration.name}`);
+                await migration.up(driver, logger);
+                await addMigrationRecord(driver, migration.version, migration.name);
+                logger.info(`Migration ${migration.version}: ${migration.name} applied successfully.`);
+            } catch (error) {
+                logger.error(`Failed to apply migration ${migration.version}: ${migration.name}`, JSON.stringify(error));
+                // Depending on the desired behavior, you might want to re-throw the error
+                // or handle it in a way that stops further migrations.
+                throw error; // Re-throwing to stop the process if a migration fails
+            }
+        } else {
+            logger.info(`Migration ${migration.version}: ${migration.name} already applied.`);
+        }
     }
-  }
+    logger.info('All migrations applied.');
 }
 
 export async function setupDatabase() {
@@ -181,7 +185,7 @@ export async function setupDatabase() {
     await applyMigrations(); // Добавляем вызов функции применения миграций
     console.log('Database setup completed successfully.');
   } catch (error) {
-    console.error('Failed to setup database:', error);
+    console.error('Failed to setup database:', JSON.stringify(error));
     process.exit(1); // Выход с ошибкой, если настройка не удалась
   } finally {
     await closeDriver(); // Убедитесь, что функция closeDriver экспортируется из ydb.ts и корректно закрывает соединение
