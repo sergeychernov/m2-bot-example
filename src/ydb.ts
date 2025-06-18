@@ -1,8 +1,6 @@
 import {
     Driver, 
-    Logger, 
-    TableDescription, 
-    Column,           
+    Logger,       
     Types,            
   TokenAuthService,
   MetadataAuthService,
@@ -11,10 +9,8 @@ import {
 } from 'ydb-sdk';
 import crypto from 'crypto'; // Добавили импорт crypto
 
-
 const endpoint = process.env.YDB_ENDPOINT;
 const database = process.env.YDB_DATABASE;
-
 
 if (!endpoint || !database) {
   throw new Error('YDB_ENDPOINT or/and YDB_DATABASE environment variable must be set.');
@@ -48,8 +44,6 @@ export async function getDriver(iamToken?: string): Promise<Driver> {
 }
   return driver;
 }
-
-
 
 export type ChatMessageType = 'bot' | 'client' | 'realtor' | 'admin';
 
@@ -170,7 +164,6 @@ export async function clearChatMessages(chatId: string): Promise<void> {
     }
 }
 
-// --- Начало новых функций для работы с промптами ---
 
 export interface Prompt {
   promptId: string;
@@ -277,7 +270,6 @@ export async function getLatestPromptByType(promptType: string, iamToken?: strin
   }
 }
 
-// --- Конец новых функций для работы с промптами ---
 
 export async function closeDriver() {
   if (driver) {

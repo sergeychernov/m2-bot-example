@@ -1,9 +1,8 @@
 import { Column, Driver, TableDescription, Types } from 'ydb-sdk';
 import { closeDriver, getDriver, logger, addPrompt } from './ydb';
-import fs from 'fs'; // Добавляем импорт fs
-import path from 'path'; // Добавляем импорт path
-import { migrations, Migration } from './migrations'; // Импортируем миграции
-import { TypedData } from 'ydb-sdk'; // Импортируем TypedData
+import fs from 'fs';
+import path from 'path';
+import { migrations } from './migrations';
 
 async function ensureChatsTableExists(iamToken?: string): Promise<void> {
 	const currentDriver = await getDriver(iamToken);

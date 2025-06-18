@@ -13,38 +13,9 @@ export function setIamToken(token: string | null) {
     currentIamToken = token;
 }
 
-// Удаляем GptConfig и gptConfig, так как они больше не нужны в таком виде
-// interface GptConfig {
-//     model: string;
-//     completionOptions: {
-//         stream: boolean;
-//         temperature: number;
-//         maxTokens: number;
-//     };
-//     // systemPrompt: string; // Remove this line
-// }
-
 interface UserDataItem {
     name: string;
     value: string;
-}
-
-// let systemPromptContent: string | null = null; // Cache for the markdown content - УДАЛЯЕМ
-
-async function loadSystemPrompt(iamToken?: string): Promise<string> { // Делаем асинхронной и принимаем iamToken
-    try {
-        const latestPrompt = await getLatestPromptByType('base', iamToken);
-        if (latestPrompt && latestPrompt.promptText) {
-            return latestPrompt.promptText;
-        }
-        console.warn('No base prompt found in DB, using fallback.');
-        // Fallback prompt or re-throw error
-        return "Системный промпт по умолчанию, если prompt не найден в БД. {{Имя риелтора}} {{Опыт}}"; 
-    } catch (error) {
-        console.error('Failed to load system_prompt from DB:', error);
-        // Fallback prompt or re-throw error
-        return "Системный промпт по умолчанию из-за ошибки загрузки. {{Имя риелтора}} {{Опыт}}"; 
-    }
 }
 
 // Переименовываем и изменяем функцию для загрузки всех настроек из БД
@@ -62,31 +33,6 @@ async function loadGptSettingsFromDb(iamToken?: string): Promise<Prompt | null> 
         return null;
     }
 }
-
-// Удаляем функцию loadGptConfig, так как она больше не нужна
-// function loadGptConfig(): GptConfig {
-//     if (gptConfig) {
-//         return gptConfig;
-//     }
-//     try {
-//         const configPath = path.resolve(__dirname, 'gpt.json');
-//         const configFile = fs.readFileSync(configPath, 'utf-8');
-//         const parsedConfig = JSON.parse(configFile) as Omit<GptConfig, 'systemPrompt'>; // Parse without systemPrompt
-//         
-//         gptConfig = parsedConfig as GptConfig; // Cast to GptConfig after potential modifications
-//         return gptConfig;
-//     } catch (error) {
-//         console.error('Failed to load gpt.json:', error);
-//         return {
-//             model: "/yandexgpt-lite/latest",
-//             completionOptions: {
-//                 stream: false,
-//                 temperature: 0.6,
-//                 maxTokens: 20000
-//             },
-//         } as GptConfig; // Cast to GptConfig
-//     }
-// }
 
 function formatSystemPrompt(basePrompt: string, userData: UserDataItem[]): string {
     let prompt = basePrompt;
@@ -124,11 +70,6 @@ export async function getYandexGPTResponse(
         }
 
         const systemPromptText = formatSystemPrompt(gptSettings.promptText, [...userData, { name: 'profile', value: userData.map(i=>`- ${i.name}: ${i.value}`).join('\n') }]);
-        
-        console.log('Using IAM token type:', typeof currentIamToken);
-        console.log('IAM token length:', currentIamToken.length);
-        console.log('IAM token starts with:', currentIamToken.substring(0, 10));
-        console.log('Using folder ID:', FOLDER_ID);
 
         const url = 'https://llm.api.cloud.yandex.net/foundationModels/v1/completion';
 

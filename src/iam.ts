@@ -8,7 +8,6 @@ export function iam(context?: any): string | null {
 			console.error('Invalid token format in context:', context.token);
 			return null;
 		}
-		console.log('IAM token received from function context and set for gpt.ts');
 	} else {
 		console.error('IAM token not found in function context');
 		return null;

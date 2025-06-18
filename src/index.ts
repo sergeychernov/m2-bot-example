@@ -1,11 +1,10 @@
-import { Bot, Context, HearsContext, InlineKeyboard, MiddlewareFn } from 'grammy'; 
+import { Bot,  InlineKeyboard } from 'grammy'; 
 import fs from 'fs'; // fs больше не нужен здесь для system_prompt.md
 import path from 'path'; // path больше не нужен здесь для system_prompt.md
 import { getYandexGPTResponse, setIamToken } from './gpt'; 
 import { 
     addChatMessage, 
-    ChatMessageType, 
-    clearChatMessages, 
+    ChatMessageType,
     getDriver, 
     getLastChatMessages,
 } from './ydb'; 
@@ -16,6 +15,7 @@ import { imitateTyping } from './telegram-utils';
 import { setupDatabase } from './setup-db';
 import { renderSettingsPage } from './settings.fe';
 import { handleSettingsPost } from './settings.be'; // <<< Добавлен этот импорт
+import { debugClientCommands } from './debug-client-commands';
 
 const botToken = process.env.BOT_TOKEN;
 if (!botToken) {
@@ -176,98 +176,7 @@ bot.callbackQuery(/client_(.+)/, async (ctx) => {
   }
 });
 
-bot.hears(/^:(\w+)\s*(.*)$/i, async (ctx) => {
-  const command = ctx.match[1]; // команда после ':'
-  const textAfterColon = ctx.match[2]; // текст после команды и пробелов
-  switch (command) {
-    case 'clear': {
-      await clearHandler(ctx);
-    } break;
-    case 'last': {
-      let n = 20;
-      try {
-        n = parseInt(textAfterColon);
-        if (isNaN(n)) {
-          n = 20;
-        }
-      } catch (error) {
-        console.log(`textAfterColon: ${textAfterColon}`);
-        console.error('Error parsing last count:', JSON.stringify(error));
-      }
-      await lastHandler(ctx, n);
-    } break;
-    default: {
-      await helpHandler(ctx);
-    } break;
-  }
-});
-
-async function helpHandler(ctx: Context) {
-  await ctx.reply(
-    'Доступные команды:\n'
-    + '*:clear* \\- очистить историю чата\n'
-    + '*:last n* \\- показать последние n сообщений',
-    { parse_mode: 'MarkdownV2' }
-  );
-}
-
-async function clearHandler(ctx: Context) {
-  const currentChatId = ctx.chat?.id.toString();
-  try {
-    if (currentChatId) {
-      await clearChatMessages(currentChatId);
-      await ctx.reply(`Все сообщения для чата ${currentChatId} были удалены.`);
-      console.info(`Successfully cleared messages for chatId: ${currentChatId}`);
-    }
-      
-  } catch (error) {
-      console.error(`Error processing clear_chat:`, error);
-      await ctx.reply(`Произошла ошибка при удалении сообщений для чата ${currentChatId}.`);
-  }
-}
-
-// Обработчик команды для очистки сообщений чата
-bot.hears(/^clear:/, clearHandler);
-
-async function lastHandler(ctx: Context, n = 20): Promise<void> {
-  console.log('Received "last:" command:', JSON.stringify(ctx));
-  const chatId = ctx.chat?.id;
-
-  if (!chatId) {
-    await ctx.reply('Не удалось определить ID чата.');
-    return;
-  }
-
-  try {
-    // Получаем iamToken, если он нужен для getLastTenChatMessages
-    // В вашем текущем getLastTenChatMessages iamToken опционален, 
-    // но если бы он был обязателен, его нужно было бы получить здесь, 
-    // например, из context в serverless-функции или другим способом.
-    const messages = await getLastChatMessages(chatId.toString(), n);
-
-    if (messages.length === 0) {
-      await ctx.reply('Сообщений в этом чате пока нет.');
-      return;
-    }
-
-    let replyText = `Последние ${n} сообщений:\n`;
-    messages.forEach(msg => {
-      const date = new Date(msg.timestamp); // YDB timestamp is in microseconds
-      replyText += `\n[${date.toLocaleString()}] ${msg.type}: ${msg.message}`;
-    });
-
-    await ctx.reply(replyText);
-
-  } catch (error) {
-    console.error(`Error fetching last ${n} chat messages:`, JSON.stringify(error));
-    await ctx.reply('Произошла ошибка при получении последних сообщений.');
-  }
-}
-
-// Обработчик для команды 'last:'
-const lastMessagesRegex = /^last:/i;
-bot.hears(lastMessagesRegex, (ctx)=>lastHandler(ctx));
-
+debugClientCommands(bot);
 
 // Новый обработчик для сообщений, начинающихся с 'y:'
 const yandexGptRegex = /^(.*)/i;
