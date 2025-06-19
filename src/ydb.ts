@@ -1,8 +1,6 @@
 import {
     Driver, 
-    Logger, 
-    TableDescription, 
-    Column,           
+    Logger,       
     Types,            
   TokenAuthService,
   MetadataAuthService,
@@ -11,10 +9,8 @@ import {
 } from 'ydb-sdk';
 import crypto from 'crypto'; // Добавили импорт crypto
 
-
 const endpoint = process.env.YDB_ENDPOINT;
 const database = process.env.YDB_DATABASE;
-
 
 if (!endpoint || !database) {
   throw new Error('YDB_ENDPOINT or/and YDB_DATABASE environment variable must be set.');
@@ -48,8 +44,6 @@ export async function getDriver(iamToken?: string): Promise<Driver> {
 }
   return driver;
 }
-
-
 
 export type ChatMessageType = 'bot' | 'client' | 'realtor' | 'admin';
 
@@ -170,13 +164,16 @@ export async function clearChatMessages(chatId: string): Promise<void> {
     }
 }
 
-// --- Начало новых функций для работы с промптами ---
 
 export interface Prompt {
   promptId: string;
   promptText: string;
   promptType: string;
   createdAt: Date;
+  model: string; // Новое поле
+  stream: boolean; // Новое поле
+  temperature: number; // Новое поле
+  maxTokens: number; // Новое поле
 }
 
 
@@ -184,6 +181,10 @@ export interface Prompt {
 export async function addPrompt(
   promptText: string,
   promptType: string,
+  model: string, // Новый параметр
+  stream: boolean, // Новый параметр
+  temperature: number, // Новый параметр
+  maxTokens: number, // Новый параметр
   iamToken?: string
 ): Promise<string> {
   const currentDriver = await getDriver(iamToken);
@@ -197,16 +198,26 @@ export async function addPrompt(
         DECLARE $promptText AS Utf8;
         DECLARE $promptType AS Utf8;
         DECLARE $createdAt AS Timestamp;
+        DECLARE $model AS Utf8;
+        DECLARE $stream AS Bool;
+        DECLARE $temperature AS Double;
+        DECLARE $maxTokens AS Int64;
 
-        UPSERT INTO prompts (promptId, promptText, promptType, createdAt)
-        VALUES ($promptId, $promptText, $promptType, $createdAt);
+        UPSERT INTO prompts (promptId, promptText, promptType, createdAt, model, stream, temperature, maxTokens)
+        VALUES ($promptId, $promptText, $promptType, $createdAt, $model, $stream, $temperature, $maxTokens);
       `;
+
+      const timestampMicroseconds = createdAt.getTime() * 1000;
 
       await session.executeQuery(query, {
         $promptId: { type: Types.UTF8, value: { textValue: promptId } },
         $promptText: { type: Types.UTF8, value: { textValue: promptText } },
         $promptType: { type: Types.UTF8, value: { textValue: promptType } },
-        $createdAt: { type: Types.TIMESTAMP, value: { uint64Value: createdAt.getTime() * 1000 } }, 
+        $createdAt: { type: Types.TIMESTAMP, value: { uint64Value: timestampMicroseconds } },
+        $model: { type: Types.UTF8, value: { textValue: model } },
+        $stream: { type: Types.BOOL, value: { boolValue: stream } },
+        $temperature: { type: Types.DOUBLE, value: { doubleValue: temperature } },
+        $maxTokens: { type: Types.INT64, value: { int64Value: maxTokens } },
       });
       logger.info(`Prompt ${promptId} of type ${promptType} added to 'prompts' table.`);
     });
@@ -224,7 +235,7 @@ export async function getLatestPromptByType(promptType: string, iamToken?: strin
       const query = `
         DECLARE $promptType AS Utf8;
 
-        SELECT promptId, promptText, promptType, createdAt
+        SELECT promptId, promptText, promptType, createdAt, model, \`stream\`, temperature, maxTokens
         FROM prompts
         WHERE promptType = $promptType
         ORDER BY createdAt DESC
@@ -242,7 +253,11 @@ export async function getLatestPromptByType(promptType: string, iamToken?: strin
             promptId: row.items[0].textValue || '',
             promptText: row.items[1].textValue || '',
             promptType: row.items[2].textValue || '',
-            createdAt: new Date(Number(row.items[3].uint64Value) / 1000), // YDB timestamp is in microseconds
+            createdAt: new Date(Number(row.items[3].uint64Value) / 1000),
+            model: row.items[4].textValue || '',
+            stream: row.items[5].boolValue || false,
+            temperature: row.items[6].doubleValue || 0.6,
+            maxTokens: Number(row.items[7].int64Value) || 20000,
           };
         }
       }
@@ -255,7 +270,6 @@ export async function getLatestPromptByType(promptType: string, iamToken?: strin
   }
 }
 
-// --- Конец новых функций для работы с промптами ---
 
 export async function closeDriver() {
   if (driver) {

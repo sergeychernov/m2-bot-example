@@ -1,8 +1,0 @@
-{
-  "model": "/yandexgpt-lite/latest",
-  "completionOptions": {
-    "stream": false,
-    "temperature": 0.6,
-    "maxTokens": 20000
-  }
-}

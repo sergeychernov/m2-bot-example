@@ -1,24 +1,21 @@
-import { Bot, Context, HearsContext, InlineKeyboard, MiddlewareFn } from 'grammy'; 
+import { Bot,  InlineKeyboard } from 'grammy';
 import fs from 'fs'; // fs больше не нужен здесь для system_prompt.md
 import path from 'path'; // path больше не нужен здесь для system_prompt.md
 import { getYandexGPTResponse, setIamToken } from './gpt'; 
 import { 
     addChatMessage, 
-    addPrompt, 
-    ChatMessageType, 
-    clearChatMessages, 
+    ChatMessageType,
     getDriver, 
     getLastChatMessages,
-    getLatestPromptByType,
-    Prompt,
-    // addPrompt, // addPrompt больше не вызывается напрямую отсюда
-    // getLatestPromptByType as getLatestBasePrompt // getLatestBasePrompt больше не нужен здесь для проверки
 } from './ydb'; 
 
 import { iam } from './iam';
 import { Driver } from 'ydb-sdk';
 import { imitateTyping } from './telegram-utils';
 import { setupDatabase } from './setup-db';
+import { renderSettingsPage } from './settings.fe';
+import { handleSettingsPost } from './settings.be'; // <<< Добавлен этот импорт
+import { debugClientCommands } from './debug-client-commands';
 import { createQuiz } from './quiz';
 
 const botToken = process.env.BOT_TOKEN;
@@ -210,98 +207,7 @@ bot.callbackQuery(/client_(.+)/, async (ctx) => {
   }
 });
 
-bot.hears(/^:(\w+)\s*(.*)$/i, async (ctx) => {
-  const command = ctx.match[1]; // команда после ':'
-  const textAfterColon = ctx.match[2]; // текст после команды и пробелов
-  switch (command) {
-    case 'clear': {
-      await clearHandler(ctx);
-    } break;
-    case 'last': {
-      let n = 20;
-      try {
-        n = parseInt(textAfterColon);
-        if (isNaN(n)) {
-          n = 20;
-        }
-      } catch (error) {
-        console.log(`textAfterColon: ${textAfterColon}`);
-        console.error('Error parsing last count:', JSON.stringify(error));
-      }
-      await lastHandler(ctx, n);
-    } break;
-    default: {
-      await helpHandler(ctx);
-    } break;
-  }
-});
-
-async function helpHandler(ctx: Context) {
-  await ctx.reply(
-    'Доступные команды:\n'
-    + '*:clear* \\- очистить историю чата\n'
-    + '*:last n* \\- показать последние n сообщений',
-    { parse_mode: 'MarkdownV2' }
-  );
-}
-
-async function clearHandler(ctx: Context) {
-  const currentChatId = ctx.chat?.id.toString();
-  try {
-    if (currentChatId) {
-      await clearChatMessages(currentChatId);
-      await ctx.reply(`Все сообщения для чата ${currentChatId} были удалены.`);
-      console.info(`Successfully cleared messages for chatId: ${currentChatId}`);
-    }
-      
-  } catch (error) {
-      console.error(`Error processing clear_chat:`, error);
-      await ctx.reply(`Произошла ошибка при удалении сообщений для чата ${currentChatId}.`);
-  }
-}
-
-// Обработчик команды для очистки сообщений чата
-bot.hears(/^clear:/, clearHandler);
-
-async function lastHandler(ctx: Context, n = 20): Promise<void> {
-  console.log('Received "last:" command:', JSON.stringify(ctx));
-  const chatId = ctx.chat?.id;
-
-  if (!chatId) {
-    await ctx.reply('Не удалось определить ID чата.');
-    return;
-  }
-
-  try {
-    // Получаем iamToken, если он нужен для getLastTenChatMessages
-    // В вашем текущем getLastTenChatMessages iamToken опционален, 
-    // но если бы он был обязателен, его нужно было бы получить здесь, 
-    // например, из context в serverless-функции или другим способом.
-    const messages = await getLastChatMessages(chatId.toString(), n);
-
-    if (messages.length === 0) {
-      await ctx.reply('Сообщений в этом чате пока нет.');
-      return;
-    }
-
-    let replyText = `Последние ${n} сообщений:\n`;
-    messages.forEach(msg => {
-      const date = new Date(msg.timestamp); // YDB timestamp is in microseconds
-      replyText += `\n[${date.toLocaleString()}] ${msg.type}: ${msg.message}`;
-    });
-
-    await ctx.reply(replyText);
-
-  } catch (error) {
-    console.error(`Error fetching last ${n} chat messages:`, JSON.stringify(error));
-    await ctx.reply('Произошла ошибка при получении последних сообщений.');
-  }
-}
-
-// Обработчик для команды 'last:'
-const lastMessagesRegex = /^last:/i;
-bot.hears(lastMessagesRegex, (ctx)=>lastHandler(ctx));
-
+debugClientCommands(bot);
 
 // Новый обработчик для сообщений, начинающихся с 'y:'
 const yandexGptRegex = /^(.*)/i;
@@ -392,26 +298,7 @@ export async function handler(event: any, context?: any) {
       return { statusCode: 200, body: 'DB initialized' };
     }
     if (event.httpMethod === 'GET') {//редактор глобальных настроек
-      const {promptText} = (await getLatestPromptByType('base')) as Prompt;
-        return {
-          statusCode: 200,
-          headers: { 'Content-Type': 'text/html; charset=utf-8' },
-          body: `
-            <!DOCTYPE html>
-            <html lang="ru">
-            <head>
-              <meta charset="UTF-8">
-              <title>Большое текстовое поле</title>
-            </head>
-            <body>
-              <form method="POST">
-                <textarea name="text" rows="30" cols="100" placeholder="Вставьте сюда текст...">${promptText}</textarea><br/>
-                <button type="submit">Отправить</button>
-              </form>
-            </body>
-            </html>
-          `,
-        };
+      return await renderSettingsPage();
     }
     if (!event.body) {
       console.error('Event body is missing');
@@ -419,35 +306,7 @@ export async function handler(event: any, context?: any) {
   }
     if (event.isBase64Encoded) {//бекенд глобальных настроек
       if (event.httpMethod === 'POST') {
-        let bodyString = Buffer.from(event.body, 'base64').toString('utf-8');
-    
-        let textData = '';
-        if (bodyString) {
-          const params = new URLSearchParams(bodyString);
-          const rawTextData = params.get('text');
-          if (rawTextData) {
-            textData = rawTextData.replace(/\r\n/g, '\n'); // Нормализация переводов строк
-          }
-        }
-        await addPrompt(textData, 'base'); // Используем saveOrUpdatePrompt как в предыдущем примере
-        const formUrl = event.url; 
-
-        return {
-        statusCode: 200,
-        headers: { 'Content-Type': 'text/html; charset=utf-8' }, // Изменяем Content-Type
-        body: `
-          <html>
-            <head>
-              <meta http-equiv="refresh" content="3;url=${formUrl}">
-              <title>Сохранение данных</title>
-            </head>
-            <body>
-              <p>Форма сохранена. Размер: ${textData.length}.</p>
-              <p>Вы будете перенаправлены обратно через 3 секунды. Если нет, нажмите <a href="${formUrl}">сюда</a>.</p>
-            </body>
-          </html>
-        `,
-      };
+      return await handleSettingsPost(event);
       }
     }
         if (!botInitialized) {
@@ -475,11 +334,11 @@ export async function handler(event: any, context?: any) {
         await bot.handleUpdate(update);
         return { statusCode: 200, body: 'OK' };
 
-    } catch (err: any) {
-        console.error('Error in handler:', err);
-        const errorMessage = err.message || 'Unknown error';
-        const errorStack = err.stack || 'No stack trace';
-        console.error(`Error message: ${errorMessage}, Stack: ${errorStack}`);
+    } catch (error: any) {
+        console.error('Error in handler:', JSON.stringify(error));
+        const errorMessage = error.message || 'Unknown error';
+        const errorStack = error.stack || 'No stack trace';
+        console.error(`Error message: ${errorMessage}, Stack: ${JSON.stringify(errorStack)}`);
         return { statusCode: 500, body: `Error processing update: ${errorMessage}` };
     }
   
