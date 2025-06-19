@@ -19,6 +19,7 @@ import { iam } from './iam';
 import { Driver } from 'ydb-sdk';
 import { imitateTyping } from './telegram-utils';
 import { setupDatabase } from './setup-db';
+import { startQuiz, handleQuizText, handleQuizButton } from './quiz';
 
 const botToken = process.env.BOT_TOKEN;
 if (!botToken) {
@@ -42,7 +43,8 @@ async function initializeBot() {
     await bot.api.setMyCommands([
       { command: 'start', description: 'Начать работу с ботом' },
       { command: 'help', description: 'Показать справку' },
-      { command: 'clients', description: 'Показать список клиентов' }
+      { command: 'clients', description: 'Показать список клиентов' },
+      { command: 'quiz', description: 'Пройти квиз' }
     ]);
     console.log('Bot commands set.');
     botInitialized = true;
@@ -82,15 +84,32 @@ const loadClients = (): Client[] => {
 
 // Обработчик команды /start
 bot.command('start', async (ctx) => {
-  // ctx.me теперь должен быть доступен, если initializeBot() был вызван
-  const firstName = ctx.from?.first_name || 'риелтор';
-  const botUsername = ctx.me?.username || 'your_bot_username'; // Добавим запасной вариант
-  const botLink = `https://t.me/${botUsername}`;
-  const qrCodeUrl = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(botLink)}`;
+  // const firstName = ctx.from?.first_name || 'риелтор';
+  // const botUsername = ctx.me?.username || 'your_bot_username';
+  // const botLink = `https://t.me/${botUsername}`;
+  // const qrCodeUrl = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(botLink)}`;
 
-  await ctx.replyWithPhoto(qrCodeUrl, {
-    caption: `Привет, ${firstName}! 👋\n\nЯ ваш помощник в работе с недвижимостью. Используйте этот QR-код, чтобы поделиться моим контактом с клиентами.`
-  });
+  // await ctx.replyWithPhoto(qrCodeUrl, {
+  //   caption: `Привет, ${firstName}! 👋\n\nЯ ваш помощник в работе с недвижимостью. Используйте этот QR-код, чтобы поделиться моим контактом с клиентами.`
+  // });
+
+  const text =
+    'Для начала пройдите короткий опрос, чтобы бот лучше подстроился под ваш запрос. Опрос займет не более двух минут. Готовы начать?';
+  const keyboard = new InlineKeyboard()
+    .text('Да', 'start_quiz_yes')
+    .text('Нет', 'start_quiz_no');
+  await ctx.reply(text, { reply_markup: keyboard });
+});
+
+bot.callbackQuery('start_quiz_yes', async (ctx) => {
+  await ctx.answerCallbackQuery();
+    await ctx.reply('Отлично!');
+  await startQuiz(ctx);
+});
+
+bot.callbackQuery('start_quiz_no', async (ctx) => {
+  await ctx.answerCallbackQuery();
+  await ctx.reply('Хорошо, будем ждать, пока вы созреете.');
 });
 
 // Команда /help
@@ -99,10 +118,16 @@ bot.command('help', async (ctx) => {
     'Доступные команды:\n' +
     '/start - Начать работу с ботом\n' +
     '/help - Показать это сообщение\n' +
-    '/clients - Показать список всех клиентов'
+    '/clients - Показать список всех клиентов' +
+    '/quiz - Пройти квиз'
   );
   //await handleUpdate(ctx);
 });
+
+// Команда /quiz
+bot.command('quiz', startQuiz);
+bot.on('message:text', handleQuizText);
+bot.callbackQuery(/quiz_simple_(.+)/, handleQuizButton);
 
 // Команда /clients
 bot.command('clients', async (ctx) => {
