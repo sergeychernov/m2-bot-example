@@ -264,3 +264,94 @@ export async function closeDriver() {
     logger.info('Driver destroyed');
   }
 }
+
+export interface User {
+  userId: string;
+  firstName: string;
+  lastName: string;
+  occupation: string;
+  experience: string;
+  dealTypes: string;
+  workStyle: string;
+  usageGoal: string;
+  phone: string;
+  email: string;
+}
+
+export async function addUser(user: User, iamToken?: string): Promise<void> {
+  const currentDriver = await getDriver(iamToken);
+  try {
+    await currentDriver.tableClient.withSession(async (session) => {
+      const query = `
+        DECLARE $userId AS Utf8;
+        DECLARE $firstName AS Utf8;
+        DECLARE $lastName AS Utf8;
+        DECLARE $occupation AS Utf8;
+        DECLARE $experience AS Utf8;
+        DECLARE $dealTypes AS Utf8;
+        DECLARE $workStyle AS Utf8;
+        DECLARE $usageGoal AS Utf8;
+        DECLARE $phone AS Utf8;
+        DECLARE $email AS Utf8;
+
+        UPSERT INTO users (userId, firstName, lastName, occupation, experience, dealTypes, workStyle, usageGoal, phone, email)
+        VALUES ($userId, $firstName, $lastName, $occupation, $experience, $dealTypes, $workStyle, $usageGoal, $phone, $email);
+      `;
+      await session.executeQuery(query, {
+        $userId: { type: Types.UTF8, value: { textValue: user.userId } },
+        $firstName: { type: Types.UTF8, value: { textValue: user.firstName } },
+        $lastName: { type: Types.UTF8, value: { textValue: user.lastName } },
+        $occupation: { type: Types.UTF8, value: { textValue: user.occupation } },
+        $experience: { type: Types.UTF8, value: { textValue: user.experience } },
+        $dealTypes: { type: Types.UTF8, value: { textValue: user.dealTypes } },
+        $workStyle: { type: Types.UTF8, value: { textValue: user.workStyle } },
+        $usageGoal: { type: Types.UTF8, value: { textValue: user.usageGoal } },
+        $phone: { type: Types.UTF8, value: { textValue: user.phone } },
+        $email: { type: Types.UTF8, value: { textValue: user.email } },
+      });
+      logger.info(`User ${user.userId} added/updated in 'users' table.`);
+    });
+  } catch (error) {
+    logger.error('Failed to add user:', error);
+    throw error;
+  }
+}
+
+export async function getUser(userId: string, iamToken?: string): Promise<User | null> {
+  const currentDriver = await getDriver(iamToken);
+  try {
+    return await currentDriver.tableClient.withSession(async (session) => {
+      const query = `
+        DECLARE $userId AS Utf8;
+        SELECT userId, firstName, lastName, occupation, experience, dealTypes, workStyle, usageGoal, phone, email
+        FROM users
+        WHERE userId = $userId
+        LIMIT 1;
+      `;
+      const { resultSets } = await session.executeQuery(query, {
+        $userId: { type: Types.UTF8, value: { textValue: userId } },
+      });
+      if (resultSets[0]?.rows && resultSets[0].rows.length > 0) {
+        const row = resultSets[0].rows[0];
+        if (row.items) {
+          return {
+            userId: row.items[0].textValue || '',
+            firstName: row.items[1].textValue || '',
+            lastName: row.items[2].textValue || '',
+            occupation: row.items[3].textValue || '',
+            experience: row.items[4].textValue || '',
+            dealTypes: row.items[5].textValue || '',
+            workStyle: row.items[6].textValue || '',
+            usageGoal: row.items[7].textValue || '',
+            phone: row.items[8].textValue || '',
+            email: row.items[9].textValue || '',
+          };
+        }
+      }
+      return null;
+    });
+  } catch (error) {
+    logger.error('Failed to get user:', error);
+    throw error;
+  }
+}

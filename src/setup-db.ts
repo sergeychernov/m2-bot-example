@@ -106,6 +106,39 @@ async function ensureMigrationsTableExists(iamToken?: string): Promise<void> {
 	}
   }
 
+async function ensureUsersTableExists(iamToken?: string): Promise<void> {
+	const currentDriver = await getDriver(iamToken);
+	try {
+		await currentDriver.tableClient.withSession(async (session) => {
+			try {
+				await session.describeTable('users');
+				logger.info("Table 'users' already exists.");
+			} catch (error: any) {
+				logger.info("Table 'users' not found, creating...");
+				await session.createTable(
+					'users',
+					new TableDescription()
+						.withColumn(new Column('userId', Types.UTF8)) // PK
+						.withColumn(new Column('firstName', Types.UTF8))
+						.withColumn(new Column('lastName', Types.UTF8))
+						.withColumn(new Column('occupation', Types.UTF8))
+						.withColumn(new Column('experience', Types.UTF8))
+						.withColumn(new Column('dealTypes', Types.UTF8))
+						.withColumn(new Column('workStyle', Types.UTF8))
+						.withColumn(new Column('usageGoal', Types.UTF8))
+						.withColumn(new Column('phone', Types.UTF8))
+						.withColumn(new Column('email', Types.UTF8))
+						.withPrimaryKeys('userId')
+				);
+				logger.info("Table 'users' created successfully.");
+			}
+		});
+	} catch (error) {
+		logger.error('Failed to ensure users table exists:', error);
+		throw error;
+	}
+}
+
 async function getAppliedMigrations(driver: Driver): Promise<number[]> {
   const appliedVersions: number[] = [];
   try {
@@ -178,6 +211,7 @@ export async function setupDatabase() {
     await ensureChatsTableExists();
     await ensurePromptsTableExists();
     await ensureMigrationsTableExists();
+	await ensureUsersTableExists();
     await applyMigrations(); // Добавляем вызов функции применения миграций
     console.log('Database setup completed successfully.');
   } catch (error) {

@@ -19,7 +19,7 @@ import { iam } from './iam';
 import { Driver } from 'ydb-sdk';
 import { imitateTyping } from './telegram-utils';
 import { setupDatabase } from './setup-db';
-import { startQuiz, handleQuizText, handleQuizButton } from './quiz';
+import { createQuiz } from './quiz';
 
 const botToken = process.env.BOT_TOKEN;
 if (!botToken) {
@@ -82,6 +82,11 @@ const loadClients = (): Client[] => {
   }
 };
 
+const questions = JSON.parse(
+    fs.readFileSync(path.join(__dirname, 'quiz.json'), 'utf-8')
+);
+const quiz = createQuiz(questions);
+
 // Обработчик команды /start
 bot.command('start', async (ctx) => {
   // const firstName = ctx.from?.first_name || 'риелтор';
@@ -103,8 +108,8 @@ bot.command('start', async (ctx) => {
 
 bot.callbackQuery('start_quiz_yes', async (ctx) => {
   await ctx.answerCallbackQuery();
-    await ctx.reply('Отлично!');
-  await startQuiz(ctx);
+  await ctx.reply('Отлично!');
+  await quiz.startQuiz(ctx, false);
 });
 
 bot.callbackQuery('start_quiz_no', async (ctx) => {
@@ -125,9 +130,10 @@ bot.command('help', async (ctx) => {
 });
 
 // Команда /quiz
-bot.command('quiz', startQuiz);
-bot.on('message:text', handleQuizText);
-bot.callbackQuery(/quiz_simple_(.+)/, handleQuizButton);
+bot.command('quiz', (ctx) => quiz.startQuiz(ctx, true));
+bot.on('message:text', quiz.handleQuizText);
+bot.callbackQuery(/quiz_simple_(.+)/, quiz.handleQuizButton);
+bot.callbackQuery('quiz_exit', quiz.handleQuizExit);
 
 // Команда /clients
 bot.command('clients', async (ctx) => {
