@@ -93,6 +93,8 @@ export function createQuiz(questions: any[]) {
         await showQuizResult(ctx, state.answers);
         delete quizStates[chatId];
       }
+    } else if (currentQ.type === 'buttons') {
+      await ctx.reply('Пожалуйста, выберите один из предложенных вариантов с помощью кнопок.');
     }
   }
 
