@@ -338,25 +338,3 @@ export async function handler(event: any, context?: any) {
     }
   
 }
-
-interface UserDataItem {
-    name: string;
-    value: string;
-}
-
-let userData: UserDataItem[] | null = null;
-
-function loadUserData(): UserDataItem[] {
-    if (userData) {
-        return userData;
-    }
-    try {
-        const userConfigPath = path.resolve(__dirname, 'user.json');
-        const userConfigFile = fs.readFileSync(userConfigPath, 'utf-8');
-        userData = JSON.parse(userConfigFile) as UserDataItem[];
-        return userData;
-    } catch (error) {
-        console.error('Failed to load user.json:', error);
-        return [];
-    }
-}
