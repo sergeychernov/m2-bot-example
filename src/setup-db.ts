@@ -108,6 +108,7 @@ async function ensureUsersTableExists(iamToken?: string): Promise<void> {
 					new TableDescription()
 						.withColumn(new Column('botClientId', Types.UTF8))
 						.withColumn(new Column('profile', Types.JSON))
+						.withPrimaryKeys('botClientId')
 				);
 				logger.info("Table 'users' created successfully.");
 			}

@@ -307,7 +307,7 @@ export async function getBotClientData(botClientId: string, iamToken?: string): 
     return await currentDriver.tableClient.withSession(async (session) => {
       const query = `
         DECLARE $botClientId AS Utf8;
-        SELECT profile FROM users WHERE botCLientId = $botClientId LIMIT 1;
+        SELECT profile FROM users WHERE botClientId = $botClientId LIMIT 1;
       `;
       const { resultSets } = await session.executeQuery(query, {
         $botClientId: { type: Types.UTF8, value: { textValue: botClientId } },
