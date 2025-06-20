@@ -39,7 +39,8 @@ async function initializeBot() {
     await bot.api.setMyCommands([
       { command: 'start', description: 'Начать работу с ботом' },
       { command: 'help', description: 'Показать справку' },
-      { command: 'clients', description: 'Показать список клиентов' }
+      { command: 'clients', description: 'Показать список клиентов' },
+      { command: 'demo', description: 'Демонстрация возможностей' }
     ]);
     console.log('Bot commands set.');
     botInitialized = true;
@@ -90,15 +91,14 @@ bot.command('start', async (ctx) => {
   });
 });
 
-// Команда /help
 bot.command('help', async (ctx) => {
   await ctx.reply(
     'Доступные команды:\n' +
     '/start - Начать работу с ботом\n' +
     '/help - Показать это сообщение\n' +
-    '/clients - Показать список всех клиентов'
+    '/clients - Показать список всех клиентов\n' +
+    '/demo - Демонстрация возможностей'
   );
-  //await handleUpdate(ctx);
 });
 
 // Команда /clients
@@ -250,6 +250,13 @@ const FOLDER_ID = process.env.YC_FOLDER_ID;
 
 let dbDriver: Driver | undefined;
 // let initialPromptAdded = false; // Удаляем этот флаг
+
+// Команда /demo
+bot.command('demo', async (ctx) => {
+  await ctx.reply(
+    'Это демонстрационная команда. Здесь вы можете показать различные возможности бота.'
+  );
+});
 
 // Обновленный обработчик Cloud Function
 export async function handler(event: any, context?: any) {
