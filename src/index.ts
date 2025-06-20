@@ -41,7 +41,8 @@ async function initializeBot() {
       { command: 'start', description: 'Начать работу с ботом' },
       { command: 'help', description: 'Показать справку' },
       { command: 'clients', description: 'Показать список клиентов' },
-      { command: 'quiz', description: 'Пройти квиз' }
+      { command: 'quiz', description: 'Пройти квиз' },
+      { command: 'demo', description: 'Демонстрация возможностей' }
     ]);
     console.log('Bot commands set.');
     botInitialized = true;
@@ -94,9 +95,9 @@ bot.command('help', async (ctx) => {
     '/start - Начать работу с ботом\n' +
     '/help - Показать это сообщение\n' +
     '/clients - Показать список всех клиентов\n' +
-    '/quiz - Пройти квиз'
+    '/quiz - Пройти квиз\n' +
+    '/demo - Демонстрация возможностей'
   );
-  //await handleUpdate(ctx);
 });
 
 // Команда /quiz
@@ -222,8 +223,8 @@ bot.hears(yandexGptRegex, async (ctx) => {
                     await ctx.reply('Ошибка: не удалось определить пользователя.');
                     return;
                 }
-                
-                const gptResponse = await getYandexGPTResponse(gptMessages, ctx.from.id.toString()); 
+
+                const gptResponse = await getYandexGPTResponse(gptMessages, ctx.from.id.toString());
                 
                 if (gptResponse && gptResponse.text) {
                 
@@ -258,6 +259,13 @@ const FOLDER_ID = process.env.YC_FOLDER_ID;
 
 let dbDriver: Driver | undefined;
 // let initialPromptAdded = false; // Удаляем этот флаг
+
+// Команда /demo
+bot.command('demo', async (ctx) => {
+  await ctx.reply(
+    'Это демонстрационная команда. Здесь вы можете показать различные возможности бота.'
+  );
+});
 
 // Обновленный обработчик Cloud Function
 export async function handler(event: any, context?: any) {
