@@ -86,15 +86,6 @@ const quiz = createQuiz(questions);
 
 // Обработчик команды /start
 bot.command('start', async (ctx) => {
-  // const firstName = ctx.from?.first_name || 'риелтор';
-  // const botUsername = ctx.me?.username || 'your_bot_username';
-  // const botLink = `https://t.me/${botUsername}`;
-  // const qrCodeUrl = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(botLink)}`;
-
-  // await ctx.replyWithPhoto(qrCodeUrl, {
-  //   caption: `Привет, ${firstName}! 👋\n\nЯ ваш помощник в работе с недвижимостью. Используйте этот QR-код, чтобы поделиться моим контактом с клиентами.`
-  // });
-
   const text =
     'Для начала пройдите короткий опрос, чтобы бот лучше подстроился под ваш запрос. Опрос займет не более двух минут. Готовы начать?';
   const keyboard = new InlineKeyboard()
