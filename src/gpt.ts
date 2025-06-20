@@ -1,6 +1,10 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { getLatestPromptByType, Prompt } from './ydb'; // Обновляем импорт Prompt
+import {
+    getLatestPromptByType,
+    Prompt,
+    getUserData,
+} from './ydb';
 
 // ID вашего каталога в Yandex Cloud
 const FOLDER_ID = process.env.YC_FOLDER_ID; // Оставляем, если используется для x-folder-id или если modelUri в json не полный
@@ -34,12 +38,18 @@ async function loadGptSettingsFromDb(iamToken?: string): Promise<Prompt | null> 
     }
 }
 
-function formatSystemPrompt(basePrompt: string, userData: UserDataItem[]): string {
+function formatSystemPrompt(basePrompt: string, userData: Record<string, any>): string {
     let prompt = basePrompt;
-    userData.forEach(item => {
-        const placeholder = `{{${item.name}}}`;
-        prompt = prompt.replace(new RegExp(placeholder.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), item.value);
-    });
+    for (const key in userData) {
+        prompt = prompt.replace(new RegExp(`{{${key}}}`, 'g'), userData[key]);
+    }
+
+    // Специальная обработка для {{profile}}
+    const profileData = Object.entries(userData)
+        .map(([key, value]) => `- ${key}: ${value}`)
+        .join('\\n');
+    prompt = prompt.replace(/{{profile}}/g, profileData);
+
     return prompt;
 }
 
@@ -49,7 +59,7 @@ export async function getYandexGPTResponse(
         role: 'user' | 'assistant';
         text: string;
     }[],
-    userData: UserDataItem[] // Добавляем userData
+    userId: string
 ): Promise<{ text: string; totalUsage?: string } | null> {
     try {
         if (!currentIamToken) {
@@ -62,14 +72,19 @@ export async function getYandexGPTResponse(
             return { text: 'Ошибка конфигурации: Yandex Folder ID не настроен.' };
         }
 
-        const gptSettings = await loadGptSettingsFromDb(currentIamToken); // Загружаем настройки из БД
+        const gptSettings = await loadGptSettingsFromDb(currentIamToken);
 
         if (!gptSettings) {
             console.error('Failed to load GPT settings from database.');
             return { text: 'Ошибка: Не удалось загрузить настройки GPT из базы данных.' };
         }
 
-        const systemPromptText = formatSystemPrompt(gptSettings.promptText, [...userData, { name: 'profile', value: userData.map(i=>`- ${i.name}: ${i.value}`).join('\n') }]);
+        const userData = await getUserData(userId);
+        if (!userData) {
+            console.warn(`No user data found for userId: ${userId}. Proceeding without it.`);
+        }
+
+        const systemPromptText = formatSystemPrompt(gptSettings.promptText, userData || {});
 
         const url = 'https://llm.api.cloud.yandex.net/foundationModels/v1/completion';
 

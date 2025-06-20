@@ -1,5 +1,5 @@
 import { Context, InlineKeyboard } from 'grammy';
-import { addUser, User, getUser } from './ydb';
+import { addUserData, getUserData } from './ydb';
 import Ajv from 'ajv';
 import quizSchema from './quiz-schema.json';
 
@@ -14,21 +14,18 @@ export function createQuiz(questions: any[]) {
 
   async function saveUserFromState(ctx: Context, state: { answers: Record<string, string> }) {
     if (ctx.from) {
-      const oldUser = await getUser(ctx.from.id.toString());
-      const user: User = {
-        userId: ctx.from.id.toString(),
-        firstName: state.answers['1'] || oldUser?.firstName || '',
-        lastName: state.answers['2'] || oldUser?.lastName || '',
-        occupation: state.answers['3'] || oldUser?.occupation || '',
-        experience: state.answers['4'] || oldUser?.experience || '',
-        dealTypes: state.answers['5'] || oldUser?.dealTypes || '',
-        workStyle: state.answers['6'] || oldUser?.workStyle || '',
-        usageGoal: state.answers['7'] || oldUser?.usageGoal || '',
-        phone: state.answers['8'] || oldUser?.phone || '',
-        email: state.answers['9'] || oldUser?.email || '',
-      };
+      const userId = ctx.from.id.toString();
+      const oldData = await getUserData(userId) || {};
+      
+      const newData: Record<string, any> = { ...oldData };
+      for (const question of questions) {
+        if (state.answers[question.id]) {
+          newData[question.key] = state.answers[question.id];
+        }
+      }
+
       try {
-        await addUser(user);
+        await addUserData(userId, newData);
       } catch (e) {
         console.log('Данные не удалось сохранить', e);
       }
@@ -36,25 +33,20 @@ export function createQuiz(questions: any[]) {
   }
 
   async function startQuiz(ctx: Context, allowExit = false) {
-    if (!ctx.chat) return;
+    if (!ctx.chat || !ctx.from) return;
     const chatId = ctx.chat.id.toString();
-    let oldAnswers: Record<string, string> = {};
-    if (ctx.from) {
-      const user = await getUser(ctx.from.id.toString());
-      if (user) {
-        oldAnswers = {
-          '1': user.firstName,
-          '2': user.lastName,
-          '3': user.occupation,
-          '4': user.experience,
-          '5': user.dealTypes,
-          '6': user.workStyle,
-          '7': user.usageGoal,
-          '8': user.phone,
-          '9': user.email,
-        };
+    const userId = ctx.from.id.toString();
+
+    const userData = await getUserData(userId);
+    const oldAnswers: Record<string, string> = {};
+    if (userData) {
+      for (const question of questions) {
+        if (userData[question.key]) {
+          oldAnswers[question.id] = userData[question.key];
+        }
       }
     }
+    
     quizStates[chatId] = { step: 0, answers: { ...oldAnswers }, allowExit };
     await sendQuestion(ctx, quizStates[chatId]);
   }
@@ -129,7 +121,7 @@ export function createQuiz(questions: any[]) {
   async function showQuizResult(ctx: Context, answers: Record<string, string>) {
     let result = 'Ваши ответы:\n';
     for (const q of questions) {
-      result += `${q.question} — ${answers[q.id] || ''}\n`;
+      result += `${q.key} — ${answers[q.id] || ''}\n`;
     }
     await ctx.reply(result);
   }

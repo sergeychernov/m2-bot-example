@@ -244,9 +244,13 @@ bot.hears(yandexGptRegex, async (ctx) => {
                     text: v.message
                 }));
                 
-                const currentUserData = loadUserData(); // Загружаем данные пользователя
-                // Исправленный вызов с передачей currentUserData
-                const gptResponse = await getYandexGPTResponse(gptMessages, currentUserData); 
+                if (!ctx.from) {
+                    console.error('Cannot get user ID from context');
+                    await ctx.reply('Ошибка: не удалось определить пользователя.');
+                    return;
+                }
+                
+                const gptResponse = await getYandexGPTResponse(gptMessages, ctx.from.id.toString()); 
                 
                 if (gptResponse && gptResponse.text) {
                 

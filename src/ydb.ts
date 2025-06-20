@@ -279,93 +279,55 @@ export async function closeDriver() {
   }
 }
 
-export interface User {
+export interface UserData {
   userId: string;
-  firstName: string;
-  lastName: string;
-  occupation: string;
-  experience: string;
-  dealTypes: string;
-  workStyle: string;
-  usageGoal: string;
-  phone: string;
-  email: string;
+  data: Record<string, any>;
 }
 
-export async function addUser(user: User, iamToken?: string): Promise<void> {
+export async function addUserData(userId: string, data: Record<string, any>, iamToken?: string): Promise<void> {
   const currentDriver = await getDriver(iamToken);
   try {
     await currentDriver.tableClient.withSession(async (session) => {
       const query = `
         DECLARE $userId AS Utf8;
-        DECLARE $firstName AS Utf8;
-        DECLARE $lastName AS Utf8;
-        DECLARE $occupation AS Utf8;
-        DECLARE $experience AS Utf8;
-        DECLARE $dealTypes AS Utf8;
-        DECLARE $workStyle AS Utf8;
-        DECLARE $usageGoal AS Utf8;
-        DECLARE $phone AS Utf8;
-        DECLARE $email AS Utf8;
-
-        UPSERT INTO users (userId, firstName, lastName, occupation, experience, dealTypes, workStyle, usageGoal, phone, email)
-        VALUES ($userId, $firstName, $lastName, $occupation, $experience, $dealTypes, $workStyle, $usageGoal, $phone, $email);
+        DECLARE $data AS Json;
+        UPSERT INTO users (userId, data)
+        VALUES ($userId, $data);
       `;
       await session.executeQuery(query, {
-        $userId: { type: Types.UTF8, value: { textValue: user.userId } },
-        $firstName: { type: Types.UTF8, value: { textValue: user.firstName } },
-        $lastName: { type: Types.UTF8, value: { textValue: user.lastName } },
-        $occupation: { type: Types.UTF8, value: { textValue: user.occupation } },
-        $experience: { type: Types.UTF8, value: { textValue: user.experience } },
-        $dealTypes: { type: Types.UTF8, value: { textValue: user.dealTypes } },
-        $workStyle: { type: Types.UTF8, value: { textValue: user.workStyle } },
-        $usageGoal: { type: Types.UTF8, value: { textValue: user.usageGoal } },
-        $phone: { type: Types.UTF8, value: { textValue: user.phone } },
-        $email: { type: Types.UTF8, value: { textValue: user.email } },
+        $userId: { type: Types.UTF8, value: { textValue: userId } },
+        $data: { type: Types.JSON, value: { textValue: JSON.stringify(data) } },
       });
-      logger.info(`User ${user.userId} added/updated in 'users' table.`);
+      logger.info(`User data for ${userId} added/updated in 'users' table.`);
     });
   } catch (error) {
-    logger.error('Failed to add user:', error);
+    logger.error('Failed to add user data:', error);
     throw error;
   }
 }
 
-export async function getUser(userId: string, iamToken?: string): Promise<User | null> {
+export async function getUserData(userId: string, iamToken?: string): Promise<Record<string, any> | null> {
   const currentDriver = await getDriver(iamToken);
   try {
     return await currentDriver.tableClient.withSession(async (session) => {
       const query = `
         DECLARE $userId AS Utf8;
-        SELECT userId, firstName, lastName, occupation, experience, dealTypes, workStyle, usageGoal, phone, email
-        FROM users
-        WHERE userId = $userId
-        LIMIT 1;
+        SELECT data FROM users WHERE userId = $userId LIMIT 1;
       `;
       const { resultSets } = await session.executeQuery(query, {
         $userId: { type: Types.UTF8, value: { textValue: userId } },
       });
       if (resultSets[0]?.rows && resultSets[0].rows.length > 0) {
         const row = resultSets[0].rows[0];
-        if (row.items) {
-          return {
-            userId: row.items[0].textValue || '',
-            firstName: row.items[1].textValue || '',
-            lastName: row.items[2].textValue || '',
-            occupation: row.items[3].textValue || '',
-            experience: row.items[4].textValue || '',
-            dealTypes: row.items[5].textValue || '',
-            workStyle: row.items[6].textValue || '',
-            usageGoal: row.items[7].textValue || '',
-            phone: row.items[8].textValue || '',
-            email: row.items[9].textValue || '',
-          };
+        const jsonData = row?.items?.[0]?.textValue;
+        if (jsonData) {
+          return JSON.parse(jsonData);
         }
       }
       return null;
     });
   } catch (error) {
-    logger.error('Failed to get user:', error);
+    logger.error('Failed to get user data:', error);
     throw error;
   }
 }
