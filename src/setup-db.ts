@@ -3,6 +3,7 @@ import { closeDriver, getDriver, logger, addPrompt } from './ydb';
 import fs from 'fs';
 import path from 'path';
 import { migrations } from './migrations';
+import { getSystem } from './system';
 
 async function ensureChatsTableExists(iamToken?: string): Promise<void> {
 	const currentDriver = await getDriver(iamToken);
@@ -164,22 +165,33 @@ async function addMigrationRecord(driver: Driver, version: number, name: string)
 }
 
 async function applyMigrations(iamToken?: string): Promise<void> {
-	const driver = await getDriver(iamToken);
+    const driver = await getDriver(iamToken);
     logger.info('Applying migrations...');
     const appliedVersions = await getAppliedMigrations(driver);
+    
+    // Получаем текущую версию из system
+    const system = await getSystem();
+    const currentVersion = system.version || 0;
+    
+    // Сортируем миграции по версии и фильтруем только те, что больше текущей
+    const pendingMigrations = migrations
+        .filter(m => m.version > currentVersion)
+        .sort((a, b) => a.version - b.version);
 
-    for (const migration of migrations) {
+    for (const migration of pendingMigrations) {
         if (!appliedVersions.has(migration.version)) {
             try {
                 logger.info(`Applying migration ${migration.version}: ${migration.name}`);
                 await migration.up(driver, logger);
                 await addMigrationRecord(driver, migration.version, migration.name);
+                
+                // Обновляем версию в system после успешного применения миграции
+                await system.setVersion(migration.version);
+                
                 logger.info(`Migration ${migration.version}: ${migration.name} applied successfully.`);
             } catch (error) {
                 logger.error(`Failed to apply migration ${migration.version}: ${migration.name}`, JSON.stringify(error));
-                // Depending on the desired behavior, you might want to re-throw the error
-                // or handle it in a way that stops further migrations.
-                throw error; // Re-throwing to stop the process if a migration fails
+                throw error;
             }
         } else {
             logger.info(`Migration ${migration.version}: ${migration.name} already applied.`);
@@ -188,19 +200,65 @@ async function applyMigrations(iamToken?: string): Promise<void> {
     logger.info('All migrations applied.');
 }
 
+async function ensureSystemTableExists(iamToken?: string): Promise<void> {
+  const currentDriver = await getDriver(iamToken);
+  try {
+    await currentDriver.tableClient.withSession(async (session) => {
+      try {
+        await session.describeTable('system');
+        logger.info("Table 'system' already exists.");
+      } catch (error: any) {
+        logger.info("Table 'system' not found, creating...");
+        await session.createTable(
+          'system',
+          new TableDescription()
+            .withColumn(new Column('name', Types.UTF8))
+            .withColumn(new Column('value', Types.UTF8))
+            .withColumn(new Column('parser', Types.UTF8))
+            .withPrimaryKeys('name')
+        );
+        logger.info("Table 'system' created successfully.");
+
+        // Вычисляем максимальную версию из массива миграций
+        const maxVersion = Math.max(...migrations.map(m => m.version));
+
+        const query = `
+          DECLARE $name AS Utf8;
+          DECLARE $value AS Utf8;
+          DECLARE $parser AS Utf8;
+
+          UPSERT INTO system (name, value, parser)
+          VALUES ($name, $value, $parser);
+        `;
+
+        await session.executeQuery(query, {
+          $name: { type: Types.UTF8, value: { textValue: 'version' } },
+          $value: { type: Types.UTF8, value: { textValue: maxVersion.toString() } },
+          $parser: { type: Types.UTF8, value: { textValue: 'parseInt' } }
+        });
+        logger.info("Added version record to system table.");
+      }
+    });
+  } catch (error) {
+    logger.error('Failed to ensure system table exists:', error);
+    throw error;
+  }
+}
+
 export async function setupDatabase() {
   try {
     console.log('Starting database setup...');
+    await ensureSystemTableExists(); // Создаем первой
     await ensureChatsTableExists();
     await ensurePromptsTableExists();
     await ensureMigrationsTableExists();
-    await applyMigrations(); // Добавляем вызов функции применения миграций
+    await applyMigrations();
     console.log('Database setup completed successfully.');
   } catch (error) {
     console.error('Failed to setup database:', JSON.stringify(error));
-    process.exit(1); // Выход с ошибкой, если настройка не удалась
+    process.exit(1);
   } finally {
-    await closeDriver(); // Убедитесь, что функция closeDriver экспортируется из ydb.ts и корректно закрывает соединение
+    await closeDriver();
     console.log('Database connection closed.');
   }
 }
