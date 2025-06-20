@@ -79,31 +79,13 @@ const loadClients = (): Client[] => {
   }
 };
 
-const questions = JSON.parse(
+const quizConfig = JSON.parse(
     fs.readFileSync(path.join(__dirname, 'quiz.json'), 'utf-8')
 );
-const quiz = createQuiz(questions);
+const quiz = createQuiz(quizConfig, bot);
 
 // Обработчик команды /start
-bot.command('start', async (ctx) => {
-  const text =
-    'Для начала пройдите короткий опрос, чтобы бот лучше подстроился под ваш запрос. Опрос займет не более двух минут. Готовы начать?';
-  const keyboard = new InlineKeyboard()
-    .text('Да', 'start_quiz_yes')
-    .text('Нет', 'start_quiz_no');
-  await ctx.reply(text, { reply_markup: keyboard });
-});
-
-bot.callbackQuery('start_quiz_yes', async (ctx) => {
-  await ctx.answerCallbackQuery();
-  await ctx.reply('Отлично!');
-  await quiz.startQuiz(ctx, false);
-});
-
-bot.callbackQuery('start_quiz_no', async (ctx) => {
-  await ctx.answerCallbackQuery();
-  await ctx.reply('Хорошо, будем ждать, пока вы созреете.');
-});
+bot.command('start', (ctx) => quiz.startQuiz(ctx));
 
 // Команда /help
 bot.command('help', async (ctx) => {
@@ -120,8 +102,8 @@ bot.command('help', async (ctx) => {
 // Команда /quiz
 bot.command('quiz', (ctx) => quiz.startQuiz(ctx, true));
 bot.on('message:text', quiz.handleQuizText);
-bot.callbackQuery(/quiz_simple_(.+)/, quiz.handleQuizButton);
-bot.callbackQuery('quiz_exit', quiz.handleQuizExit);
+bot.callbackQuery(/simple_quiz_(.+)/, quiz.handleQuizButton);
+bot.callbackQuery('exit_quiz', quiz.handleQuizExit);
 
 // Команда /clients
 bot.command('clients', async (ctx) => {

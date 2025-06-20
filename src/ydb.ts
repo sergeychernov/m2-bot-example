@@ -279,26 +279,21 @@ export async function closeDriver() {
   }
 }
 
-export interface UserData {
-  userId: string;
-  data: Record<string, any>;
-}
-
-export async function addUserData(userId: string, data: Record<string, any>, iamToken?: string): Promise<void> {
+export async function addBotClientData(botClientId: string, profile: Record<string, any>, iamToken?: string): Promise<void> {
   const currentDriver = await getDriver(iamToken);
   try {
     await currentDriver.tableClient.withSession(async (session) => {
       const query = `
-        DECLARE $userId AS Utf8;
-        DECLARE $data AS Json;
-        UPSERT INTO users (userId, data)
-        VALUES ($userId, $data);
+        DECLARE $botClientId AS Utf8;
+        DECLARE $profile AS Json;
+        UPSERT INTO users (botClientId, profile)
+        VALUES ($botClientId, $profile);
       `;
       await session.executeQuery(query, {
-        $userId: { type: Types.UTF8, value: { textValue: userId } },
-        $data: { type: Types.JSON, value: { textValue: JSON.stringify(data) } },
+        $botClientId: { type: Types.UTF8, value: { textValue: botClientId } },
+        $profile: { type: Types.JSON, value: { textValue: JSON.stringify(profile) } },
       });
-      logger.info(`User data for ${userId} added/updated in 'users' table.`);
+      logger.info(`User data for ${botClientId} added/updated in 'users' table.`);
     });
   } catch (error) {
     logger.error('Failed to add user data:', error);
@@ -306,16 +301,16 @@ export async function addUserData(userId: string, data: Record<string, any>, iam
   }
 }
 
-export async function getUserData(userId: string, iamToken?: string): Promise<Record<string, any> | null> {
+export async function getBotClientData(botClientId: string, iamToken?: string): Promise<Record<string, any> | null> {
   const currentDriver = await getDriver(iamToken);
   try {
     return await currentDriver.tableClient.withSession(async (session) => {
       const query = `
-        DECLARE $userId AS Utf8;
-        SELECT data FROM users WHERE userId = $userId LIMIT 1;
+        DECLARE $botClientId AS Utf8;
+        SELECT profile FROM users WHERE botCLientId = $botClientId LIMIT 1;
       `;
       const { resultSets } = await session.executeQuery(query, {
-        $userId: { type: Types.UTF8, value: { textValue: userId } },
+        $botClientId: { type: Types.UTF8, value: { textValue: botClientId } },
       });
       if (resultSets[0]?.rows && resultSets[0].rows.length > 0) {
         const row = resultSets[0].rows[0];

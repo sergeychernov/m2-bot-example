@@ -1,31 +1,56 @@
-import { Context, InlineKeyboard } from 'grammy';
-import { addUserData, getUserData } from './ydb';
+import {Bot, Context, InlineKeyboard} from 'grammy';
+import { addBotClientData, getBotClientData } from './ydb';
 import Ajv from 'ajv';
 import quizSchema from './quiz-schema.json';
 
-export function createQuiz(questions: any[]) {
+export type QuizQuestion = {
+  id: string;
+  key: string;
+  question: string;
+  type: 'text' | 'buttons';
+  options?: string[];
+  required?: boolean;
+};
+
+export type QuizConfig = {
+  quizDescription?: string;
+  welcomeText?: string;
+  exitText?: string;
+  successText?: string;
+  noStartText?: string;
+  startText?: string;
+  buttonLabels?: {
+    yes?: string;
+    no?: string;
+    exit?: string;
+  };
+  questions: QuizQuestion[];
+};
+
+export function createQuiz(quizConfig: QuizConfig, bot: Bot) {
   const ajv = new Ajv();
   const validate = ajv.compile(quizSchema);
-  if (!validate(questions)) {
+  if (!validate(quizConfig)) {
     throw new Error('Вопросы не прошли валидацию: ' + JSON.stringify(validate.errors));
   }
 
   const quizStates: Record<string, { step: number; answers: Record<string, string>; allowExit: boolean }> = {};
+  const { questions, quizDescription, welcomeText, exitText, successText, buttonLabels, noStartText, startText } = quizConfig;
 
   async function saveUserFromState(ctx: Context, state: { answers: Record<string, string> }) {
     if (ctx.from) {
       const userId = ctx.from.id.toString();
-      const oldData = await getUserData(userId) || {};
+      const oldData = await getBotClientData(userId) || {};
       
       const newData: Record<string, any> = { ...oldData };
-      for (const question of questions) {
+      for (const question of quizConfig.questions) {
         if (state.answers[question.id]) {
           newData[question.key] = state.answers[question.id];
         }
       }
 
       try {
-        await addUserData(userId, newData);
+        await addBotClientData(userId, newData);
       } catch (e) {
         console.log('Данные не удалось сохранить', e);
       }
@@ -37,7 +62,7 @@ export function createQuiz(questions: any[]) {
     const chatId = ctx.chat.id.toString();
     const userId = ctx.from.id.toString();
 
-    const userData = await getUserData(userId);
+    const userData = await getBotClientData(userId);
     const oldAnswers: Record<string, string> = {};
     if (userData) {
       for (const question of questions) {
@@ -48,20 +73,46 @@ export function createQuiz(questions: any[]) {
     }
     
     quizStates[chatId] = { step: 0, answers: { ...oldAnswers }, allowExit };
-    await sendQuestion(ctx, quizStates[chatId]);
+
+    if (quizDescription) {
+      await ctx.reply(quizDescription);
+    }
+    if (welcomeText) {
+      const keyboard = new InlineKeyboard()
+        .text(buttonLabels?.yes || 'Да', 'start_quiz_yes')
+        .text(buttonLabels?.no || 'Нет', 'start_quiz_no');
+      await ctx.reply(welcomeText, { reply_markup: keyboard });
+    } else {
+      await sendQuestion(ctx, quizStates[chatId]);
+    }
   }
+
+  bot.callbackQuery('start_quiz_yes', async (ctx) => {
+    await ctx.answerCallbackQuery();
+    if (startText) {
+      await ctx.reply(startText);
+    }
+    await sendQuestion(ctx, quizStates[ctx.chat!.id.toString()]);
+  });
+
+  bot.callbackQuery('start_quiz_no', async (ctx) => {
+    await ctx.answerCallbackQuery();
+    if (noStartText) {
+      await ctx.reply(noStartText);
+    }
+  });
 
   async function sendQuestion(ctx: Context, state: { step: number; answers: Record<string, string>; allowExit: boolean }) {
     const currentQ = questions[state.step];
     if (!currentQ) return;
     if (currentQ.type === 'buttons') {
       const keyboard = new InlineKeyboard();
-      currentQ.options?.forEach((option: string) => keyboard.text(option, `quiz_simple_${option}`).row());
-      if (state.allowExit) keyboard.text('Выйти из квиза', 'quiz_exit').row();
+      currentQ.options?.forEach((option: string) => keyboard.text(option, `simple_quiz_${option}`).row());
+      if (state.allowExit && buttonLabels?.exit) keyboard.text(buttonLabels.exit, 'exit_quiz').row();
       await ctx.reply(currentQ.question, { reply_markup: keyboard, parse_mode: 'HTML' });
     } else {
-      if (state.allowExit) {
-        const keyboard = new InlineKeyboard().text('Выйти из квиза', 'quiz_exit');
+      if (state.allowExit && buttonLabels?.exit) {
+        const keyboard = new InlineKeyboard().text(buttonLabels.exit, 'exit_quiz');
         await ctx.reply(currentQ.question, { reply_markup: keyboard, parse_mode: 'HTML' });
       } else {
         await ctx.reply(currentQ.question, { parse_mode: 'HTML' });
@@ -115,13 +166,19 @@ export function createQuiz(questions: any[]) {
     const chatId = ctx.chat.id.toString();
     delete quizStates[chatId];
     await ctx.answerCallbackQuery();
-    await ctx.reply('Вы вышли из квиза. Ваши ответы частично сохранены.');
+    if (exitText) {
+      await ctx.reply(exitText);
+    }
   }
 
   async function showQuizResult(ctx: Context, answers: Record<string, string>) {
+    // временно для тестирования
     let result = 'Ваши ответы:\n';
     for (const q of questions) {
       result += `${q.key} — ${answers[q.id] || ''}\n`;
+    }
+    if (successText) {
+      await ctx.reply(successText);
     }
     await ctx.reply(result);
   }
@@ -130,6 +187,6 @@ export function createQuiz(questions: any[]) {
     startQuiz,
     handleQuizText,
     handleQuizButton,
-    handleQuizExit
+    handleQuizExit,
   };
 } 

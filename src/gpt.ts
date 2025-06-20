@@ -3,7 +3,7 @@ import * as path from 'path';
 import {
     getLatestPromptByType,
     Prompt,
-    getUserData,
+    getBotClientData,
 } from './ydb';
 
 // ID вашего каталога в Yandex Cloud
@@ -17,9 +17,9 @@ export function setIamToken(token: string | null) {
     currentIamToken = token;
 }
 
-interface UserDataItem {
-    name: string;
-    value: string;
+// Расширяемый словарь для хранения любых пользовательских данных
+export interface UserDataItem {
+  [key: string]: any;
 }
 
 // Переименовываем и изменяем функцию для загрузки всех настроек из БД
@@ -79,7 +79,7 @@ export async function getYandexGPTResponse(
             return { text: 'Ошибка: Не удалось загрузить настройки GPT из базы данных.' };
         }
 
-        const userData = await getUserData(userId);
+        const userData = await getBotClientData(userId);
         if (!userData) {
             console.warn(`No user data found for userId: ${userId}. Proceeding without it.`);
         }

@@ -123,45 +123,5 @@ export const migrations: Migration[] = [
                 // throw error; 
             }
         },
-    },
-    {
-        version: 4,
-        name: 'RecreateUsersWithJson',
-        async up(driver: Driver, logger: Logger) {
-            logger.info('Applying migration: RecreateUsersWithJson');
-            try {
-                await driver.tableClient.withSession(async (session) => {
-                    // Удаляем старую таблицу, если она существует
-                    try {
-                        logger.info("Dropping existing 'users' table if it exists.");
-                        await session.dropTable('users');
-                        logger.info("'users' table dropped successfully.");
-                    } catch (error) {
-                        // Игнорируем ошибку, если таблицы не существует
-                        if (error instanceof Error && (error.message.includes('doesn\'t exist') || error.message.includes('Path not found'))) {
-                            logger.warn("Table 'users' not found, skipping drop.");
-                        } else {
-                            // Пробрасываем другие ошибки
-                            throw error;
-                        }
-                    }
-
-                    // Создаем новую таблицу
-                    logger.info("Creating new 'users' table with JSON data structure");
-                    const { TableDescription, Column } = await import('ydb-sdk');
-                    await session.createTable(
-                        'users',
-                        new TableDescription()
-                            .withColumn(new Column('userId', Types.UTF8))
-                            .withColumn(new Column('data', Types.JSON))
-                            .withPrimaryKeys('userId')
-                    );
-                    logger.info("New 'users' table created successfully.");
-                });
-            } catch (error) {
-                logger.error('Failed to apply migration RecreateUsersWithJson:', error);
-                throw error;
-            }
-        },
-    },
+    }
 ];
