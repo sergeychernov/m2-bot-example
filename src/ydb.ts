@@ -278,3 +278,51 @@ export async function closeDriver() {
     logger.info('Driver destroyed');
   }
 }
+
+export async function addBotClientData(botClientId: string, profile: Record<string, any>, iamToken?: string): Promise<void> {
+  const currentDriver = await getDriver(iamToken);
+  try {
+    await currentDriver.tableClient.withSession(async (session) => {
+      const query = `
+        DECLARE $botClientId AS Utf8;
+        DECLARE $profile AS Json;
+        UPSERT INTO users (botClientId, profile)
+        VALUES ($botClientId, $profile);
+      `;
+      await session.executeQuery(query, {
+        $botClientId: { type: Types.UTF8, value: { textValue: botClientId } },
+        $profile: { type: Types.JSON, value: { textValue: JSON.stringify(profile) } },
+      });
+      logger.info(`User data for ${botClientId} added/updated in 'users' table.`);
+    });
+  } catch (error) {
+    logger.error('Failed to add user data:', error);
+    throw error;
+  }
+}
+
+export async function getBotClientData(botClientId: string, iamToken?: string): Promise<Record<string, any> | null> {
+  const currentDriver = await getDriver(iamToken);
+  try {
+    return await currentDriver.tableClient.withSession(async (session) => {
+      const query = `
+        DECLARE $botClientId AS Utf8;
+        SELECT profile FROM users WHERE botClientId = $botClientId LIMIT 1;
+      `;
+      const { resultSets } = await session.executeQuery(query, {
+        $botClientId: { type: Types.UTF8, value: { textValue: botClientId } },
+      });
+      if (resultSets[0]?.rows && resultSets[0].rows.length > 0) {
+        const row = resultSets[0].rows[0];
+        const jsonData = row?.items?.[0]?.textValue;
+        if (jsonData) {
+          return JSON.parse(jsonData);
+        }
+      }
+      return null;
+    });
+  } catch (error) {
+    logger.error('Failed to get user data:', error);
+    throw error;
+  }
+}

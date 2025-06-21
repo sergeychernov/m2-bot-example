@@ -123,5 +123,5 @@ export const migrations: Migration[] = [
                 // throw error; 
             }
         },
-    },
+    }
 ];

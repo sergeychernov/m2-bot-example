@@ -15,6 +15,7 @@
   "license": "ISC",
   "dependencies": {
     "@yandex-cloud/nodejs-sdk": "^2.9.0",
+    "ajv": "^8.17.1",
     "grammy": "^1.36.3",
     "ydb-sdk": "^5.11.0"
   },

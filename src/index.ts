@@ -1,4 +1,4 @@
-import { Bot,  InlineKeyboard } from 'grammy'; 
+import { Bot,  InlineKeyboard } from 'grammy';
 import fs from 'fs'; // fs больше не нужен здесь для system_prompt.md
 import path from 'path'; // path больше не нужен здесь для system_prompt.md
 import { getYandexGPTResponse, setIamToken } from './gpt'; 
@@ -16,6 +16,7 @@ import { setupDatabase } from './setup-db';
 import { renderSettingsPage } from './settings.fe';
 import { handleSettingsPost } from './settings.be'; // <<< Добавлен этот импорт
 import { debugClientCommands } from './debug-client-commands';
+import { createQuiz } from './quiz';
 
 const botToken = process.env.BOT_TOKEN;
 if (!botToken) {
@@ -40,6 +41,7 @@ async function initializeBot() {
       { command: 'start', description: 'Начать работу с ботом' },
       { command: 'help', description: 'Показать справку' },
       { command: 'clients', description: 'Показать список клиентов' },
+      { command: 'quiz', description: 'Пройти квиз' },
       { command: 'demo', description: 'Демонстрация возможностей' }
     ]);
     console.log('Bot commands set.');
@@ -78,28 +80,31 @@ const loadClients = (): Client[] => {
   }
 };
 
+const quizConfig = JSON.parse(
+    fs.readFileSync(path.join(__dirname, 'quiz.json'), 'utf-8')
+);
+const quiz = createQuiz(quizConfig, bot);
+
 // Обработчик команды /start
-bot.command('start', async (ctx) => {
-  // ctx.me теперь должен быть доступен, если initializeBot() был вызван
-  const firstName = ctx.from?.first_name || 'риелтор';
-  const botUsername = ctx.me?.username || 'your_bot_username'; // Добавим запасной вариант
-  const botLink = `https://t.me/${botUsername}`;
-  const qrCodeUrl = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(botLink)}`;
+bot.command('start', (ctx) => quiz.startQuiz(ctx));
 
-  await ctx.replyWithPhoto(qrCodeUrl, {
-    caption: `Привет, ${firstName}! 👋\n\nЯ ваш помощник в работе с недвижимостью. Используйте этот QR-код, чтобы поделиться моим контактом с клиентами.`
-  });
-});
-
+// Команда /help
 bot.command('help', async (ctx) => {
   await ctx.reply(
     'Доступные команды:\n' +
     '/start - Начать работу с ботом\n' +
     '/help - Показать это сообщение\n' +
     '/clients - Показать список всех клиентов\n' +
+    '/quiz - Пройти квиз\n' +
     '/demo - Демонстрация возможностей'
   );
 });
+
+// Команда /quiz
+bot.command('quiz', (ctx) => quiz.startQuiz(ctx, true));
+bot.on('message:text', quiz.handleQuizText);
+bot.callbackQuery(/simple_quiz_(.+)/, quiz.handleQuizButton);
+bot.callbackQuery('exit_quiz', quiz.handleQuizExit);
 
 // Команда /clients
 bot.command('clients', async (ctx) => {
@@ -213,9 +218,13 @@ bot.hears(yandexGptRegex, async (ctx) => {
                     text: v.message
                 }));
                 
-                const currentUserData = loadUserData(); // Загружаем данные пользователя
-                // Исправленный вызов с передачей currentUserData
-                const gptResponse = await getYandexGPTResponse(gptMessages, currentUserData); 
+                if (!ctx.from) {
+                    console.error('Cannot get user ID from context');
+                    await ctx.reply('Ошибка: не удалось определить пользователя.');
+                    return;
+                }
+
+                const gptResponse = await getYandexGPTResponse(gptMessages, ctx.from.id.toString());
                 
                 if (gptResponse && gptResponse.text) {
                 
@@ -318,26 +327,4 @@ export async function handler(event: any, context?: any) {
         return { statusCode: 500, body: `Error processing update: ${errorMessage}` };
     }
   
-}
-
-interface UserDataItem {
-    name: string;
-    value: string;
-}
-
-let userData: UserDataItem[] | null = null;
-
-function loadUserData(): UserDataItem[] {
-    if (userData) {
-        return userData;
-    }
-    try {
-        const userConfigPath = path.resolve(__dirname, 'user.json');
-        const userConfigFile = fs.readFileSync(userConfigPath, 'utf-8');
-        userData = JSON.parse(userConfigFile) as UserDataItem[];
-        return userData;
-    } catch (error) {
-        console.error('Failed to load user.json:', error);
-        return [];
-    }
 }

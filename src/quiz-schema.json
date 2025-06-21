@@ -1,0 +1,46 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "quizDescription": { "type": "string" },
+    "welcomeText": { "type": "string" },
+    "exitText": { "type": "string" },
+    "successText": { "type": "string" },
+    "startText": { "type": "string" },
+    "noStartText": { "type": "string" },
+    "buttonLabels": {
+      "type": "object",
+      "properties": {
+        "yes": { "type": "string" },
+        "no": { "type": "string" },
+        "exit": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "questions": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["id", "type", "key", "question"],
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "type": { "type": "string", "enum": ["text", "buttons"] },
+          "key": { "type": "string", "minLength": 1 },
+          "question": { "type": "string", "minLength": 1 },
+          "options": {
+            "type": "array",
+            "items": { "type": "string" },
+            "minItems": 1
+          },
+          "required": { "type": "boolean" }
+        },
+        "additionalProperties": false,
+        "if": { "properties": { "type": { "const": "buttons" } } },
+        "then": { "required": ["options"] }
+      }
+    }
+  },
+  "required": ["questions"],
+  "additionalProperties": false
+} 

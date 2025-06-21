@@ -94,6 +94,31 @@ async function ensurePromptsTableExists(iamToken?: string): Promise<void> {
 	}
   }
 
+async function ensureUsersTableExists(iamToken?: string): Promise<void> {
+	const currentDriver = await getDriver(iamToken);
+	try {
+		await currentDriver.tableClient.withSession(async (session) => {
+			try {
+				await session.describeTable('users');
+				logger.info("Table 'users' already exists.");
+			} catch (error: any) {
+				logger.info("Table 'users' not found, creating...");
+				await session.createTable(
+					'users',
+					new TableDescription()
+						.withColumn(new Column('botClientId', Types.UTF8))
+						.withColumn(new Column('profile', Types.JSON))
+						.withPrimaryKeys('botClientId')
+				);
+				logger.info("Table 'users' created successfully.");
+			}
+		});
+	} catch (error) {
+		logger.error('Failed to ensure users table exists:', error);
+		throw error;
+	}
+}
+
 async function ensureMigrationsTableExists(iamToken?: string): Promise<void> {
 	const currentDriver = await getDriver(iamToken);
 	try {
@@ -168,11 +193,11 @@ async function applyMigrations(iamToken?: string): Promise<void> {
     const driver = await getDriver(iamToken);
     logger.info('Applying migrations...');
     const appliedVersions = await getAppliedMigrations(driver);
-    
+
     // Получаем текущую версию из system
     const system = await getSystem();
     const currentVersion = system.version || 0;
-    
+
     // Сортируем миграции по версии и фильтруем только те, что больше текущей
     const pendingMigrations = migrations
         .filter(m => m.version > currentVersion)
@@ -184,10 +209,10 @@ async function applyMigrations(iamToken?: string): Promise<void> {
                 logger.info(`Applying migration ${migration.version}: ${migration.name}`);
                 await migration.up(driver, logger);
                 await addMigrationRecord(driver, migration.version, migration.name);
-                
+
                 // Обновляем версию в system после успешного применения миграции
                 await system.setVersion(migration.version);
-                
+
                 logger.info(`Migration ${migration.version}: ${migration.name} applied successfully.`);
             } catch (error) {
                 logger.error(`Failed to apply migration ${migration.version}: ${migration.name}`, JSON.stringify(error));
@@ -251,6 +276,7 @@ export async function setupDatabase() {
     await ensureSystemTableExists(); // Создаем первой
     await ensureChatsTableExists();
     await ensurePromptsTableExists();
+    await ensureUsersTableExists();
     await ensureMigrationsTableExists();
     await applyMigrations();
     console.log('Database setup completed successfully.');
