@@ -2,11 +2,12 @@ import { Bot,  InlineKeyboard } from 'grammy';
 import fs from 'fs'; // fs больше не нужен здесь для system_prompt.md
 import path from 'path'; // path больше не нужен здесь для system_prompt.md
 import { getYandexGPTResponse, setIamToken } from './gpt'; 
-import { 
-    addChatMessage, 
+import {
+    addChatMessage,
     ChatMessageType,
-    getDriver, 
+    getDriver,
     getLastChatMessages,
+    getLatestPromptByType,
 } from './ydb'; 
 
 import { iam } from './iam';
@@ -16,7 +17,7 @@ import { setupDatabase } from './setup-db';
 import { renderSettingsPage } from './settings.fe';
 import { handleSettingsPost } from './settings.be'; // <<< Добавлен этот импорт
 import { debugClientCommands } from './debug-client-commands';
-import { createQuiz } from './quiz';
+import { createQuiz, QuizConfig } from './quiz';
 
 const botToken = process.env.BOT_TOKEN;
 if (!botToken) {
@@ -80,13 +81,44 @@ const loadClients = (): Client[] => {
   }
 };
 
-const quizConfig = JSON.parse(
-    fs.readFileSync(path.join(__dirname, 'quiz.json'), 'utf-8')
-);
-const quiz = createQuiz(quizConfig, bot);
+async function loadQuizConfigFromDb(): Promise<QuizConfig | null> {
+    try {
+        const prompt = await getLatestPromptByType('base');
+        if (!prompt || !prompt.quizConfig) {
+            console.warn('Quiz config not found in database!');
+            return null;
+        }
+        return prompt.quizConfig;
+    } catch (error) {
+        console.error('Failed to load quiz config from DB:', JSON.stringify(error));
+        return null;
+    }
+}
+
+let quiz: any = null;
+
+async function startQuizWithFreshConfig(ctx: any, allowExit = false) {
+    try {
+        const quizConfig = await loadQuizConfigFromDb();
+        if (!quizConfig) {
+            await ctx.reply('❌ Квиз не настроен');
+            return;
+        }
+
+        quiz = createQuiz(quizConfig);
+        console.log('Quiz recreated with fresh config');
+
+        await quiz.startQuiz(ctx, allowExit);
+    } catch (error) {
+        console.error('Error starting quiz with fresh config:', error);
+        await ctx.reply('❌ Ошибка при запуске квиза');
+    }
+}
 
 // Обработчик команды /start
-bot.command('start', (ctx) => quiz.startQuiz(ctx));
+bot.command('start', async (ctx) => {
+    await startQuizWithFreshConfig(ctx, false);
+});
 
 // Команда /help
 bot.command('help', async (ctx) => {
@@ -100,11 +132,29 @@ bot.command('help', async (ctx) => {
   );
 });
 
-// Команда /quiz
-bot.command('quiz', (ctx) => quiz.startQuiz(ctx, true));
-bot.on('message:text', quiz.handleQuizText);
-bot.callbackQuery(/simple_quiz_(.+)/, quiz.handleQuizButton);
-bot.callbackQuery('exit_quiz', quiz.handleQuizExit);
+// Обработчик команды /quiz
+bot.command('quiz', async (ctx) => {
+    await startQuizWithFreshConfig(ctx, true);
+});
+
+// Обработчики для квиза (используют уже загруженный квиз)
+bot.on('message:text', async (ctx) => {
+    if (quiz) {
+        quiz.handleQuizText(ctx);
+    }
+});
+
+bot.callbackQuery(/simple_quiz_(.+)/, async (ctx) => {
+    if (quiz) {
+        quiz.handleQuizButton(ctx);
+    }
+});
+
+bot.callbackQuery('exit_quiz', async (ctx) => {
+    if (quiz) {
+        quiz.handleQuizExit(ctx);
+    }
+});
 
 // Команда /clients
 bot.command('clients', async (ctx) => {

@@ -72,6 +72,9 @@ async function ensurePromptsTableExists(iamToken?: string): Promise<void> {
 			const gptConfigPath = path.resolve(__dirname, 'gpt.json');
 			const gptConfigFile = fs.readFileSync(gptConfigPath, 'utf-8');
 			const gptConfig = JSON.parse(gptConfigFile);
+			const quizConfigPath = path.resolve(__dirname, 'quiz.json');
+			const quizConfigFile = fs.readFileSync(quizConfigPath, 'utf-8');
+			const quizConfig = JSON.parse(quizConfigFile);
 
 			await addPrompt(
 			  initialPromptText, 
@@ -79,7 +82,8 @@ async function ensurePromptsTableExists(iamToken?: string): Promise<void> {
 			  gptConfig.model, 
 			  gptConfig.completionOptions.stream, 
 			  gptConfig.completionOptions.temperature, 
-			  gptConfig.completionOptions.maxTokens, 
+			  gptConfig.completionOptions.maxTokens,
+			  quizConfig,
 			  iamToken
 			); 
 			logger.info('Initial base prompt added to DB from system_prompt.md and gpt.json after table creation.');

@@ -123,5 +123,29 @@ export const migrations: Migration[] = [
                 // throw error; 
             }
         },
+    },
+    {
+        version: 4,
+        name: 'AddQuizConfigToPromptsTable',
+        async up(driver: Driver, logger: Logger) {
+            logger.info(`Applying migration: AddQuizConfigToPromptsTable`);
+            try {
+                await driver.queryClient.do({
+                    fn: async (session: QuerySession) => {
+                        const query = `ALTER TABLE prompts ADD COLUMN quizConfig JSON;`;
+                        logger.info('Executing DDL query: ' + query);
+                        await session.execute({ text: query });
+                        logger.info('Column quizConfig added to prompts table successfully');
+                    }
+                });
+            } catch (error) {
+                if (error instanceof Error && error.message.includes('already exists')) {
+                    logger.warn(`Could not add column quizConfig, it might already exist: ${error.message}`);
+                } else {
+                    logger.error('Failed to add column quizConfig to prompts table:', JSON.stringify(error));
+                    throw error;
+                }
+            }
+        },
     }
 ];

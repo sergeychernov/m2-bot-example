@@ -1,7 +1,5 @@
 import {Bot, Context, InlineKeyboard} from 'grammy';
 import { addBotClientData, getBotClientData } from './ydb';
-import Ajv from 'ajv';
-import quizSchema from './quiz-schema.json';
 
 export type QuizQuestion = {
   id: string;
@@ -10,32 +8,31 @@ export type QuizQuestion = {
   type: 'text' | 'buttons';
   options?: string[];
   required?: boolean;
+  imageUrl?: string;
+  validation?: {
+    type: 'email' | 'phone' | 'url' | 'number' | 'minLength' | 'maxLength' | 'pattern' | 'custom';
+    pattern?: string;
+    minLength?: number;
+    maxLength?: number;
+    min?: number;
+    max?: number;
+    errorMessage?: string;
+  };
 };
 
 export type QuizConfig = {
   quizDescription?: string;
-  welcomeText?: string;
   exitText?: string;
   successText?: string;
-  noStartText?: string;
-  startText?: string;
   buttonLabels?: {
-    yes?: string;
-    no?: string;
     exit?: string;
   };
   questions: QuizQuestion[];
 };
 
-export function createQuiz(quizConfig: QuizConfig, bot: Bot) {
-  const ajv = new Ajv();
-  const validate = ajv.compile(quizSchema);
-  if (!validate(quizConfig)) {
-    throw new Error('Вопросы не прошли валидацию: ' + JSON.stringify(validate.errors));
-  }
-
+export function createQuiz(quizConfig: QuizConfig) {
   const quizStates: Record<string, { step: number; answers: Record<string, string>; allowExit: boolean }> = {};
-  const { questions, quizDescription, welcomeText, exitText, successText, buttonLabels, noStartText, startText } = quizConfig;
+  const { questions, quizDescription, exitText, successText, buttonLabels } = quizConfig;
 
   async function saveUserFromState(ctx: Context, state: { answers: Record<string, string> }) {
     if (ctx.from) {
@@ -77,56 +74,52 @@ export function createQuiz(quizConfig: QuizConfig, bot: Bot) {
     if (quizDescription) {
       await ctx.reply(quizDescription);
     }
-    if (welcomeText) {
-      const keyboard = new InlineKeyboard()
-        .text(buttonLabels?.yes || 'Да', 'start_quiz_yes')
-        .text(buttonLabels?.no || 'Нет', 'start_quiz_no');
-      await ctx.reply(welcomeText, { reply_markup: keyboard });
-    } else {
-      await sendQuestion(ctx, quizStates[chatId]);
-    }
+
+    await sendQuestion(ctx, quizStates[chatId]);
   }
-
-  bot.callbackQuery('start_quiz_yes', async (ctx) => {
-    await ctx.answerCallbackQuery();
-    if (startText) {
-      await ctx.reply(startText);
-    }
-    await sendQuestion(ctx, quizStates[ctx.chat!.id.toString()]);
-  });
-
-  bot.callbackQuery('start_quiz_no', async (ctx) => {
-    await ctx.answerCallbackQuery();
-    if (noStartText) {
-      await ctx.reply(noStartText);
-    }
-  });
 
   async function sendQuestion(ctx: Context, state: { step: number; answers: Record<string, string>; allowExit: boolean }) {
     const currentQ = questions[state.step];
     if (!currentQ) return;
+    
+    const keyboard = new InlineKeyboard();
     if (currentQ.type === 'buttons') {
-      const keyboard = new InlineKeyboard();
-      currentQ.options?.forEach((option: string) => keyboard.text(option, `simple_quiz_${option}`).row());
-      if (state.allowExit && buttonLabels?.exit) keyboard.text(buttonLabels.exit, 'exit_quiz').row();
-      await ctx.reply(currentQ.question, { reply_markup: keyboard, parse_mode: 'HTML' });
+        currentQ.options?.forEach((option: string) => keyboard.text(option, `simple_quiz_${option}`).row());
+    }
+
+    if (state.allowExit && buttonLabels?.exit) {
+        keyboard.text(buttonLabels.exit, 'exit_quiz').row();
+    }
+
+    const messageOptions = {
+        reply_markup: keyboard.inline_keyboard.length > 0 ? keyboard : undefined,
+        parse_mode: 'HTML' as const
+    };
+
+    if (currentQ.imageUrl) {
+        await ctx.replyWithPhoto(currentQ.imageUrl, {
+            caption: currentQ.question,
+            ...messageOptions,
+        });
     } else {
-      if (state.allowExit && buttonLabels?.exit) {
-        const keyboard = new InlineKeyboard().text(buttonLabels.exit, 'exit_quiz');
-        await ctx.reply(currentQ.question, { reply_markup: keyboard, parse_mode: 'HTML' });
-      } else {
-        await ctx.reply(currentQ.question, { parse_mode: 'HTML' });
-      }
+        await ctx.reply(currentQ.question, messageOptions);
     }
   }
 
   async function handleQuizText(ctx: Context) {
     if (!ctx.chat || !ctx.message || typeof ctx.message.text !== 'string') return;
+    
     const chatId = ctx.chat.id.toString();
     const state = quizStates[chatId];
     if (!state) return;
+    
     const currentQ = questions[state.step];
     if (currentQ.type === 'text') {
+      const validationResult = validateAnswer(ctx.message.text, currentQ.validation);
+      if (!validationResult.isValid) {
+        await ctx.reply(validationResult.errorMessage || 'Ответ не прошел валидацию');
+        return;
+      }
       state.answers[currentQ.id] = ctx.message.text;
       state.step += 1;
       await saveUserFromState(ctx, state);
@@ -143,9 +136,11 @@ export function createQuiz(quizConfig: QuizConfig, bot: Bot) {
 
   async function handleQuizButton(ctx: Context) {
     if (!ctx.chat || !ctx.match) return;
+    
     const chatId = ctx.chat.id.toString();
     const state = quizStates[chatId];
     if (!state) return;
+    
     const currentQ = questions[state.step];
     if (currentQ.type === 'buttons') {
       state.answers[currentQ.id] = ctx.match[1];
@@ -163,6 +158,7 @@ export function createQuiz(quizConfig: QuizConfig, bot: Bot) {
 
   async function handleQuizExit(ctx: Context) {
     if (!ctx.chat) return;
+    
     const chatId = ctx.chat.id.toString();
     delete quizStates[chatId];
     await ctx.answerCallbackQuery();
@@ -189,4 +185,98 @@ export function createQuiz(quizConfig: QuizConfig, bot: Bot) {
     handleQuizButton,
     handleQuizExit,
   };
-} 
+}
+
+// Валидируем ответ пользователя
+function validateAnswer(answer: string, validation?: QuizQuestion['validation']): { isValid: boolean; errorMessage?: string } {
+  if (!validation) return { isValid: true };
+
+  const { type, pattern, minLength, maxLength, min, max, errorMessage } = validation;
+
+  switch (type) {
+    case 'email':
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(answer)) {
+        return {
+          isValid: false,
+          errorMessage: errorMessage || 'Пожалуйста, введите корректный email адрес'
+        };
+      }
+      break;
+
+    case 'phone':
+      const phoneRegex = /^[\+]?[0-9\s\-\(\)]{10,}$/;
+      if (!phoneRegex.test(answer)) {
+        return {
+          isValid: false,
+          errorMessage: errorMessage || 'Пожалуйста, введите корректный номер телефона'
+        };
+      }
+      break;
+
+    case 'url':
+      try {
+        new URL(answer);
+      } catch {
+        return {
+          isValid: false,
+          errorMessage: errorMessage || 'Пожалуйста, введите корректный URL'
+        };
+      }
+      break;
+
+    case 'number':
+      const num = parseFloat(answer);
+      if (isNaN(num)) {
+        return {
+          isValid: false,
+          errorMessage: errorMessage || 'Пожалуйста, введите число'
+        };
+      }
+      if (min !== undefined && num < min) {
+        return {
+          isValid: false,
+          errorMessage: errorMessage || `Число должно быть не меньше ${min}`
+        };
+      }
+      if (max !== undefined && num > max) {
+        return {
+          isValid: false,
+          errorMessage: errorMessage || `Число должно быть не больше ${max}`
+        };
+      }
+      break;
+
+    case 'minLength':
+      if (minLength !== undefined && answer.length < minLength) {
+        return {
+          isValid: false,
+          errorMessage: errorMessage || `Ответ должен содержать минимум ${minLength} символов`
+        };
+      }
+      break;
+
+    case 'maxLength':
+      if (maxLength !== undefined && answer.length > maxLength) {
+        return {
+          isValid: false,
+          errorMessage: errorMessage || `Ответ должен содержать максимум ${maxLength} символов`
+        };
+      }
+      break;
+
+    case 'pattern':
+      if (pattern) {
+        const regex = new RegExp(pattern);
+        if (!regex.test(answer)) {
+          return {
+            isValid: false,
+            errorMessage: errorMessage || 'Ответ не соответствует требуемому формату'
+          };
+        }
+      }
+      break;
+  }
+
+  return { isValid: true };
+}
