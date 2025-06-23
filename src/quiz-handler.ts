@@ -1,8 +1,54 @@
 import { Bot, Context } from 'grammy';
 import { createQuiz, QuizConfig } from './quiz';
-import {deleteQuizState, getQuizConfig} from './ydb';
+import {deleteQuizState, getMode, getQuizConfig, setMode} from './ydb';
 
 let quiz: any = null;
+
+export function quizHandler(bot: Bot) {
+    bot.command('quiz', async (ctx) => {
+        await resetQuizStateForUser(ctx);
+        const userId = ctx.from?.id?.toString();
+        if (!userId) {
+            return;
+        }
+        await setMode(userId, 'quiz');
+        await startQuizWithFreshConfig(ctx, true);
+    });
+
+    bot.command('start', async (ctx) => {
+        await resetQuizStateForUser(ctx);
+        const userId = ctx.from?.id?.toString();
+        if (!userId) {
+            return;
+        }
+        await setMode(userId, 'quiz');
+        await startQuizWithFreshConfig(ctx, false);
+    });
+
+    bot.on('message:text', async (ctx, next) => {
+        const userId = ctx.from?.id?.toString();
+        if (!userId) {
+            return;
+        }
+        const mode = await getMode(userId);
+        if (mode === 'quiz') {
+            if (!await ensureQuiz(ctx)) return;
+            await quiz.handleQuizText(ctx);
+            return;
+        }
+        return next();
+    });
+
+    bot.callbackQuery(/simple_quiz_(.+)/, async (ctx) => {
+        if (!await ensureQuiz(ctx)) return;
+        quiz.handleQuizButton(ctx);
+    });
+
+    bot.callbackQuery('exit_quiz', async (ctx) => {
+        if (!await ensureQuiz(ctx)) return;
+        quiz.handleQuizExit(ctx);
+    });
+}
 
 async function ensureQuiz(ctx: Context): Promise<boolean> {
     if (!quiz) {
@@ -59,5 +105,3 @@ export async function loadQuizConfigFromDb(): Promise<QuizConfig | null> {
         return null;
     }
 }
-
-export { ensureQuiz, quiz };

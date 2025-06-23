@@ -1,12 +1,10 @@
 import { Bot,  InlineKeyboard } from 'grammy';
 import fs from 'fs'; // fs больше не нужен здесь для system_prompt.md
 import path from 'path'; // path больше не нужен здесь для system_prompt.md
-import { getYandexGPTResponse, setIamToken } from './gpt'; 
-import { 
-    addChatMessage, 
+import { setIamToken } from './gpt';
+import {
     ChatMessageType,
-    getDriver, 
-    getLastChatMessages,
+    getDriver,
     getMode,
     setMode,
     UserMode,
@@ -20,7 +18,7 @@ import { renderSettingsPage } from './settings.fe';
 import { handleSettingsPost } from './settings.be'; // <<< Добавлен этот импорт
 import { debugClientCommands } from './debug-client-commands';
 import { chatHandler } from './chat-handler';
-import { resetQuizStateForUser, startQuizWithFreshConfig, ensureQuiz, quiz } from './quiz-handler';
+import { quizHandler } from './quiz-handler';
 
 const botToken = process.env.BOT_TOKEN;
 if (!botToken) {
@@ -84,33 +82,8 @@ const loadClients = (): Client[] => {
   }
 };
 
-// Команда /start
-bot.command('start', async (ctx) => {
-    await resetQuizStateForUser(ctx);
-    const userId = ctx.from?.id?.toString();
-    if (userId) await setMode(userId, 'quiz');
-    await startQuizWithFreshConfig(ctx, false);
-});
-
-// Команда /quiz
-bot.command('quiz', async (ctx) => {
-    await resetQuizStateForUser(ctx);
-    const userId = ctx.from?.id?.toString();
-    if (userId) await setMode(userId, 'quiz');
-    await startQuizWithFreshConfig(ctx, true);
-});
-
-// CallbackQuery для квиза
-bot.callbackQuery(/simple_quiz_(.+)/, async (ctx) => {
-    if (!await ensureQuiz(ctx)) return;
-    await quiz.handleQuizButton(ctx);
-});
-bot.callbackQuery('exit_quiz', async (ctx) => {
-    if (!await ensureQuiz(ctx)) return;
-    await quiz.handleQuizExit(ctx);
-    const userId = ctx.from?.id?.toString();
-    if (userId) await setMode(userId, 'none');
-});
+// Команды /quiz и /start
+quizHandler(bot);
 
 // Команда /help
 bot.command('help', async (ctx) => {
@@ -332,14 +305,3 @@ export async function handler(event: any, context?: any) {
     }
   
 }
-
-bot.on('message:text', async (ctx) => {
-    const userId = ctx.from?.id?.toString();
-    if (!userId) return;
-    const mode = await getMode(userId);
-    if (mode === 'quiz') {
-        if (!await ensureQuiz(ctx)) return;
-        await quiz.handleQuizText(ctx);
-        return;
-    }
-});
