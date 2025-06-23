@@ -264,18 +264,12 @@ bot.hears(yandexGptRegex, async (ctx, next) => {
 
     } else {
       }
+
+  await next();
 });
 
 let dbDriver: Driver | undefined;
 // let initialPromptAdded = false; // Удаляем этот флаг
-
-
-
-// Команда /quiz
-// bot.command('quiz', (ctx) => quiz.startQuiz(ctx, true));
-// bot.on('message:text', quiz.handleQuizText);
-// bot.callbackQuery(/simple_quiz_(.+)/, quiz.handleQuizButton);
-// bot.callbackQuery('exit_quiz', quiz.handleQuizExit);
 
 // Обновленный обработчик Cloud Function
 export async function handler(event: any, context?: any) {
