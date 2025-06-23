@@ -123,5 +123,53 @@ export const migrations: Migration[] = [
                 // throw error; 
             }
         },
+    },
+    {
+        version: 4,
+        name: 'UpdateUsersTableWithUserIdAndMode',
+        async up(driver: Driver, logger: Logger) {
+            logger.info(`Applying migration: UpdateUsersTableWithUserIdAndMode`);
+
+            await driver.queryClient.do({ fn: async (session: QuerySession) => {
+                logger.info('Dropping temporary users_new table if it exists...');
+                await session.execute({ text: 'DROP TABLE IF EXISTS users_new;' });
+
+                logger.info('Creating temporary users_new table...');
+                await session.execute({ text: `
+                    CREATE TABLE users_new (
+                        userId Utf8,
+                        profile Json,
+                        mode Utf8,
+                        PRIMARY KEY (userId)
+                    );
+                `});
+
+                logger.info('Copying data from users to users_new...');
+                await session.execute({ text: `
+                    UPSERT INTO users_new (userId, profile, mode)
+                    SELECT botClientId AS userId, profile, CAST('none' AS Utf8) AS mode FROM users;
+                `});
+
+                logger.info('Dropping old users table...');
+                await session.execute({ text: 'DROP TABLE users;' });
+
+                logger.info('Renaming users_new to users...');
+                await session.execute({ text: 'ALTER TABLE users_new RENAME TO users;' });
+
+                logger.info('Migration UpdateUsersTableWithUserIdAndMode applied successfully');
+            }}).catch(async (error) => {
+                logger.error('Failed to apply migration UpdateUsersTableWithUserIdAndMode:', JSON.stringify(error));
+                // Попытка очистки в случае ошибки
+                try {
+                    await driver.queryClient.do({ fn: async (session: QuerySession) => {
+                        logger.info('Attempting to clean up by dropping users_new table...');
+                        await session.execute({ text: 'DROP TABLE IF EXISTS users_new;' });
+                    }});
+                } catch (cleanupError) {
+                    logger.error('Failed to cleanup users_new table after migration failure:', JSON.stringify(cleanupError));
+                }
+                throw error;
+            });
+        },
     }
 ];
