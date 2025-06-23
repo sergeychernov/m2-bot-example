@@ -17,13 +17,14 @@ async function ensureChatsTableExists(iamToken?: string): Promise<void> {
 		  await session.createTable(
 			'chats',
 			new TableDescription()
-			  .withColumn(new Column('chatId', Types.UTF8))
+			  .withColumn(new Column('chatId', Types.INT64))
 			  .withColumn(new Column('messageId', Types.UTF8))
+			  .withColumn(new Column('userId', Types.INT64))
 			  .withColumn(new Column('message', Types.UTF8))
 			  .withColumn(new Column('timestamp', Types.TIMESTAMP))
 			  .withColumn(new Column('type', Types.UTF8))
 			  .withColumn(new Column('realtorId', Types.UTF8)) // Добавлено новое поле realtorId
-			  .withPrimaryKeys('chatId', 'messageId')
+			  .withPrimaryKeys('chatId', 'messageId', 'userId')
 		  );
 		  logger.info("Table 'chats' created successfully.");
 		}
