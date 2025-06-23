@@ -269,5 +269,37 @@ export const migrations: Migration[] = [
                 throw error;
             });
         },
+    },
+    {
+        version: 7,
+        name: 'RemoveRealtorIdFromChatsTable',
+        async up(driver: Driver, logger: Logger) {
+            logger.info(`Applying migration: RemoveRealtorIdFromChatsTable`);
+            try {
+                await driver.queryClient.do({
+                    fn: async (session: QuerySession) => { 
+                        const query = `
+                            ALTER TABLE chats
+                            DROP COLUMN realtorId;
+                        `;
+                        logger.info('Executing query:\n' + query);
+                        await session.execute({ text: query });
+                        logger.info('Migration RemoveRealtorIdFromChatsTable applied successfully');
+                    }
+                });
+            } catch (error) {
+                if (error instanceof Error) {
+                    if (error.message.includes('Column not found') || error.message.includes('does not exist')) {
+                        logger.warn(`Could not drop column realtorId, it might not exist: ${error.message}`);
+                    } else {
+                        logger.error('Failed to apply migration RemoveRealtorIdFromChatsTable:', error);
+                        throw error;
+                    }
+                } else {
+                    logger.error('Failed to apply migration RemoveRealtorIdFromChatsTable with a non-Error object:', error);
+                    throw error;
+                }
+            }
+        },
     }
 ];

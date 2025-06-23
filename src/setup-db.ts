@@ -23,7 +23,6 @@ async function ensureChatsTableExists(iamToken?: string): Promise<void> {
 			  .withColumn(new Column('message', Types.UTF8))
 			  .withColumn(new Column('timestamp', Types.TIMESTAMP))
 			  .withColumn(new Column('type', Types.UTF8))
-			  .withColumn(new Column('realtorId', Types.UTF8)) // Добавлено новое поле realtorId
 			  .withPrimaryKeys('chatId', 'messageId', 'userId')
 		  );
 		  logger.info("Table 'chats' created successfully.");
