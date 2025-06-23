@@ -9,6 +9,7 @@ import {
     getLastChatMessages,
     getMode,
     setMode,
+    UserMode,
 } from './ydb'; 
 
 import { iam } from './iam';
@@ -19,6 +20,7 @@ import { renderSettingsPage } from './settings.fe';
 import { handleSettingsPost } from './settings.be'; // <<< Добавлен этот импорт
 import { debugClientCommands } from './debug-client-commands';
 import { createQuiz } from './quiz';
+import { chatHandler } from './chat-handler';
 
 const botToken = process.env.BOT_TOKEN;
 if (!botToken) {
@@ -220,63 +222,31 @@ bot.hears(yandexGptRegex, async (ctx) => {
   } else {
     type = 'realtor'
   }
+  console.log('type:', type);
+  switch (type) {
+    case 'client':
+      if (businessConnectionId) {
+        await chatHandler(ctx, type);
+      }
+      break;
+    case 'realtor':
+      break;
+    case 'admin':
+      const userId = ctx.from?.id.toString();
+      const mode:UserMode = userId?await getMode(userId):'none';
+      if (mode === 'demo') {
+        await chatHandler(ctx, type);
+        //console.log('demo', JSON.stringify(ctx));
+        //await ctx.reply('Режим демонстрации: вы не можете общаться с администратором.');
+      }
+      break;
+    
+  }
   if (businessConnectionId && type === 'client') {
-    await addChatMessage(ctx.chat?.id?.toString() || '0', ctx.message?.message_id?.toString() || '0', ctx.message?.text || '0', type);
-        const promptText = ctx.message?.text; // Переименовал prompt в promptText для ясности
-        if (promptText) {
-            try {
-
-                if (!FOLDER_ID) {
-                    console.error('Yandex Folder ID is not configured.');
-                    await ctx.reply('Ошибка конфигурации: Yandex Folder ID не настроен.');
-                    return;
-                }
-
-                const historyMessages = await getLastChatMessages(ctx.chat?.id?.toString() || '0', 20);
-                // Формируем только сообщения пользователя и ассистента для передачи в getYandexGPTResponse
-                const gptMessages = historyMessages.map((v) => ({
-                    role: (v.type === 'client' ? 'user' : 'assistant') as 'user' | 'assistant',
-                    text: v.message
-                }));
-                
-                if (!ctx.from) {
-                    console.error('Cannot get user ID from context');
-                    await ctx.reply('Ошибка: не удалось определить пользователя.');
-                    return;
-                }
-
-                const gptResponse = await getYandexGPTResponse(gptMessages, ctx.from.id.toString());
-                
-                if (gptResponse && gptResponse.text) {
-                
-
-                // Рассчитываем задержку
-                const textToReply = gptResponse.text;
-                const startDelay = promptText.length * 100 + 2000; // Changed from prompt.length
-                const delay = textToReply.length * 200; // 300 мс на символ
-                await imitateTyping(ctx, startDelay, delay);
-
-                const r = await ctx.reply(textToReply + `\nИспользовано: ${(parseInt((gptResponse?.totalUsage || '0').toString()) / 50).toFixed(2)} коп`);
-                
-                await addChatMessage(ctx.chat?.id?.toString() || '0', r.message_id.toString() || '0', textToReply, 'bot');
-                    
-              } else {
-                    await ctx.reply('Не удалось получить ответ от YandexGPT.');
-                }
-            } catch (error) {
-                console.error('Error processing Yandex GPT request:', JSON.stringify(error));
-                await ctx.reply('Произошла ошибка при обработке вашего запроса к YandexGPT.');
-            }
-        } else {
-            await ctx.reply('Пожалуйста, укажите ваш запрос после "y:". Например: y: расскажи анекдот');
-        }
+    
     } else {
       }
 });
-
-
-
-const FOLDER_ID = process.env.YC_FOLDER_ID; 
 
 let dbDriver: Driver | undefined;
 // let initialPromptAdded = false; // Удаляем этот флаг
@@ -345,7 +315,7 @@ export async function handler(event: any, context?: any) {
         console.error('Error in handler:', JSON.stringify(error));
         const errorMessage = error.message || 'Unknown error';
         const errorStack = error.stack || 'No stack trace';
-        console.error(`Error message: ${errorMessage}, Stack: ${JSON.stringify(errorStack)}`);
+        console.error(`Error message: ${JSON.stringify(errorMessage)}, Stack: ${JSON.stringify(errorStack)}`);
         return { statusCode: 500, body: `Error processing update: ${errorMessage}` };
     }
   
