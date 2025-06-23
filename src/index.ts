@@ -7,6 +7,8 @@ import {
     ChatMessageType,
     getDriver, 
     getLastChatMessages,
+    getMode,
+    setMode,
 } from './ydb'; 
 
 import { iam } from './iam';
@@ -100,11 +102,7 @@ bot.command('help', async (ctx) => {
   );
 });
 
-// Команда /quiz
-bot.command('quiz', (ctx) => quiz.startQuiz(ctx, true));
-bot.on('message:text', quiz.handleQuizText);
-bot.callbackQuery(/simple_quiz_(.+)/, quiz.handleQuizButton);
-bot.callbackQuery('exit_quiz', quiz.handleQuizExit);
+
 
 // Команда /clients
 bot.command('clients', async (ctx) => {
@@ -181,6 +179,29 @@ bot.callbackQuery(/client_(.+)/, async (ctx) => {
   }
 });
 
+// Команда /demo
+bot.command('demo', async (ctx) => {
+  const userId = ctx.from?.id.toString();
+  if (!userId) {
+    await ctx.reply('Не удалось определить ваш ID.');
+    return;
+  }
+
+  try {
+    const currentMode = await getMode(userId);
+    if (currentMode === 'demo') {
+      await setMode(userId, 'none');
+      await ctx.reply('Режим демонстрации выключен.');
+    } else {
+      await setMode(userId, 'demo');
+      await ctx.reply(`Режим демонстрации включен. Теперь вы можете пообщаться со своим аватаром отсюда.`);
+    }
+  } catch (error) {
+    console.error('Failed to toggle demo mode:', error);
+    await ctx.reply('Произошла ошибка при переключении режима демонстрации.');
+  }
+});
+
 debugClientCommands(bot);
 
 // Новый обработчик для сообщений, начинающихся с 'y:'
@@ -199,8 +220,8 @@ bot.hears(yandexGptRegex, async (ctx) => {
   } else {
     type = 'realtor'
   }
+  if (businessConnectionId && type === 'client') {
     await addChatMessage(ctx.chat?.id?.toString() || '0', ctx.message?.message_id?.toString() || '0', ctx.message?.text || '0', type);
-    if (businessConnectionId && type === 'client') {
         const promptText = ctx.message?.text; // Переименовал prompt в promptText для ясности
         if (promptText) {
             try {
@@ -260,12 +281,13 @@ const FOLDER_ID = process.env.YC_FOLDER_ID;
 let dbDriver: Driver | undefined;
 // let initialPromptAdded = false; // Удаляем этот флаг
 
-// Команда /demo
-bot.command('demo', async (ctx) => {
-  await ctx.reply(
-    'Это демонстрационная команда. Здесь вы можете показать различные возможности бота.'
-  );
-});
+
+
+// Команда /quiz
+// bot.command('quiz', (ctx) => quiz.startQuiz(ctx, true));
+// bot.on('message:text', quiz.handleQuizText);
+// bot.callbackQuery(/simple_quiz_(.+)/, quiz.handleQuizButton);
+// bot.callbackQuery('exit_quiz', quiz.handleQuizExit);
 
 // Обновленный обработчик Cloud Function
 export async function handler(event: any, context?: any) {
