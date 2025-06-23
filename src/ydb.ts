@@ -82,7 +82,7 @@ export async function addChatMessage(
       logger.info(`Message ${messageId} for chat ${chatId} added to 'chats' table.`);
     });
   } catch (error) {
-    logger.error('Failed to add chat message:', error);
+    logger.error('Failed to add chat message:', JSON.stringify(error));
     throw error;
   }
 }
@@ -360,7 +360,7 @@ export async function setMode(userId: string, mode: UserMode, iamToken?: string)
             const query = `
                 DECLARE $userId AS Utf8;
                 DECLARE $mode AS Utf8;
-                UPDATE users SET mode = $mode WHERE userId = $userId;
+                UPSERT INTO users (userId, mode) VALUES ($userId, $mode);
             `;
             await session.executeQuery(query, {
                 $userId: { type: Types.UTF8, value: { textValue: userId } },
