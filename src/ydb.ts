@@ -287,19 +287,21 @@ export async function closeDriver() {
   }
 }
 
-export async function addBotClientData(userId: string, profile: Record<string, any>, iamToken?: string): Promise<void> {
+export async function addBotClientData(userId: string, profile: Record<string, any>, mode: string = 'none', iamToken?: string): Promise<void> {
   const currentDriver = await getDriver(iamToken);
   try {
     await currentDriver.tableClient.withSession(async (session) => {
       const query = `
         DECLARE $userId AS Utf8;
         DECLARE $profile AS Json;
+        DECLARE $mode AS Utf8;
         UPSERT INTO users (userId, profile, mode)
-        VALUES ($userId, $profile, 'none');
+        VALUES ($userId, $profile, $mode);
       `;
       await session.executeQuery(query, {
         $userId: { type: Types.UTF8, value: { textValue: userId } },
         $profile: { type: Types.JSON, value: { textValue: JSON.stringify(profile) } },
+        $mode: { type: Types.UTF8, value: { textValue: mode } },
       });
       logger.info(`User data for ${userId} added/updated in 'users' table.`);
     });
@@ -309,7 +311,7 @@ export async function addBotClientData(userId: string, profile: Record<string, a
   }
 }
 
-export async function getBotClientData(userId: string, iamToken?: string): Promise<Record<string, any> | null> {
+export async function getBotClientData(userId: string, iamToken?: string): Promise<{ profile: Record<string, any>, mode: string } | null> {
   const currentDriver = await getDriver(iamToken);
   try {
     return await currentDriver.tableClient.withSession(async (session) => {
@@ -323,8 +325,8 @@ export async function getBotClientData(userId: string, iamToken?: string): Promi
       if (resultSets[0]?.rows && resultSets[0].rows.length > 0) {
         const row = resultSets[0].rows[0];
         const profile = JSON.parse(row.items![0].textValue || '{}');
-        const mode = row.items![1].textValue;
-        return { ...profile, mode };
+        const mode = row.items![1].textValue || 'none';
+        return { profile, mode };
       }
       return null;
     });

@@ -1,30 +1,8 @@
 import { Bot, Context } from 'grammy';
 import { createQuiz, QuizConfig } from './quiz';
-import {deleteQuizState, getLatestPromptByType} from './ydb';
+import {deleteQuizState, getLatestPromptByType, setMode} from './ydb';
 
 let quiz: any = null;
-
-export function registerQuizHandlers(bot: Bot) {
-    bot.command('quiz', async (ctx) => {
-        await resetQuizStateForUser(ctx);
-        await startQuizWithFreshConfig(ctx, true);
-    });
-
-    bot.on('message:text', async (ctx) => {
-        if (!await ensureQuiz(ctx)) return;
-        quiz.handleQuizText(ctx);
-    });
-
-    bot.callbackQuery(/simple_quiz_(.+)/, async (ctx) => {
-        if (!await ensureQuiz(ctx)) return;
-        quiz.handleQuizButton(ctx);
-    });
-
-    bot.callbackQuery('exit_quiz', async (ctx) => {
-        if (!await ensureQuiz(ctx)) return;
-        quiz.handleQuizExit(ctx);
-    });
-}
 
 async function ensureQuiz(ctx: Context): Promise<boolean> {
     if (!quiz) {

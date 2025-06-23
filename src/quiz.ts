@@ -1,5 +1,5 @@
 import {Bot, Context, InlineKeyboard} from 'grammy';
-import { addBotClientData, getBotClientData, saveQuizState, loadQuizState, deleteQuizState } from './ydb';
+import { addBotClientData, getBotClientData, saveQuizState, loadQuizState, deleteQuizState, setMode, getMode } from './ydb';
 
 export type QuizQuestion = {
   id: string;
@@ -37,17 +37,16 @@ export function createQuiz(quizConfig: QuizConfig) {
   async function saveUserFromState(ctx: Context, state: { answers: Record<string, string> }) {
     if (ctx.from) {
       const userId = ctx.from.id.toString();
-      const oldData = await getBotClientData(userId) || {};
-      
-      const newData: Record<string, any> = { ...oldData };
+      const oldData = await getBotClientData(userId) || { profile: {} };
+      const newData: Record<string, any> = { ...oldData.profile };
       for (const question of quizConfig.questions) {
         if (state.answers[question.id]) {
           newData[question.key] = state.answers[question.id];
         }
       }
-
       try {
-        await addBotClientData(userId, newData);
+        const mode = await getMode(userId) || 'none';
+        await addBotClientData(userId, newData, mode);
       } catch (e) {
         console.log('Данные не удалось сохранить', e);
       }
@@ -66,8 +65,8 @@ export function createQuiz(quizConfig: QuizConfig) {
       const oldAnswers: Record<string, string> = {};
       if (userData) {
         for (const question of questions) {
-          if (userData[question.key]) {
-            oldAnswers[question.id] = userData[question.key];
+          if (userData.profile && userData.profile[question.key]) {
+            oldAnswers[question.id] = userData.profile[question.key];
           }
         }
       }
@@ -182,6 +181,11 @@ export function createQuiz(quizConfig: QuizConfig) {
   }
 
   async function showQuizResult(ctx: Context, answers: Record<string, string>) {
+    const userId = ctx.from?.id?.toString();
+    if (!userId) {
+      return;
+    }
+    await setMode(userId, 'none');
     // временно для тестирования
     let result = 'Ваши ответы:\n';
     for (const q of questions) {
