@@ -48,8 +48,9 @@ export async function getDriver(iamToken?: string): Promise<Driver> {
 export type ChatMessageType = 'bot' | 'client' | 'realtor' | 'admin';
 
 export async function addChatMessage(
-  chatId: string,
+  chatId: number,
   messageId: string,
+  userId: number,
   message: string,
   type: ChatMessageType,
   iamToken?: string
@@ -58,14 +59,15 @@ export async function addChatMessage(
   try {
     await currentDriver.tableClient.withSession(async (session) => {
       const query = `
-        DECLARE $chatId AS Utf8;
+        DECLARE $chatId AS Int64;
         DECLARE $messageId AS Utf8;
+        DECLARE $userId AS Int64;
         DECLARE $message AS Utf8;
         DECLARE $type AS Utf8;
         DECLARE $timestamp AS Timestamp;
 
-        UPSERT INTO chats (chatId, messageId, message, type, timestamp)
-        VALUES ($chatId, $messageId, $message, $type, $timestamp);
+        UPSERT INTO chats (chatId, messageId, userId, message, type, timestamp)
+        VALUES ($chatId, $messageId, $userId, $message, $type, $timestamp);
       `;
 
       const now = new Date();
@@ -73,8 +75,9 @@ export async function addChatMessage(
       const timestampMicroseconds = now.getTime() * 1000;
 
       await session.executeQuery(query, {
-        $chatId: { type: Types.UTF8, value: { textValue: chatId } },
+        $chatId: { type: Types.INT64, value: { int64Value: chatId } },
         $messageId: { type: Types.UTF8, value: { textValue: messageId } },
+        $userId: { type: Types.INT64, value: { int64Value: userId } },
         $message: { type: Types.UTF8, value: { textValue: message } },
         $type: { type: Types.UTF8, value: { textValue: type } },
         $timestamp: { type: Types.TIMESTAMP, value: { uint64Value: timestampMicroseconds } }, 
@@ -90,27 +93,30 @@ export async function addChatMessage(
 export interface ChatMessage {
   chatId: string;
   messageId: string;
+  userId: number;
   message: string;
   type: ChatMessageType;
   timestamp: Date;
 }
 
-export async function getLastChatMessages(chatId: string, limit: number, iamToken?: string): Promise<ChatMessage[]> {
+export async function getLastChatMessages(chatId: number, userId: number, limit: number, iamToken?: string): Promise<ChatMessage[]> {
   const currentDriver = await getDriver(iamToken);
   try {
     return await currentDriver.tableClient.withSession(async (session) => {
       const query = `
-        DECLARE $chatId AS Utf8;
+        DECLARE $chatId AS Int64;
+        DECLARE $userId AS Int64;
 
-        SELECT chatId, messageId, message, type, timestamp
+        SELECT chatId, messageId, userId, message, type, timestamp
         FROM chats
-        WHERE chatId = $chatId
+        WHERE chatId = $chatId AND userId = $userId
         ORDER BY timestamp DESC
         LIMIT ${limit};
       `;
 
       const { resultSets } = await session.executeQuery(query, {
-        $chatId: { type: Types.UTF8, value: { textValue: chatId } },
+        $chatId: { type: Types.INT64, value: { int64Value: chatId } },
+        $userId: { type: Types.INT64, value: { int64Value: userId } },
       });
 
       const messages: ChatMessage[] = [];
@@ -118,11 +124,12 @@ export async function getLastChatMessages(chatId: string, limit: number, iamToke
         for (const row of resultSets[0].rows) {
           if (row.items) {
             messages.push({
-              chatId: row.items[0].textValue || '',
+              chatId: String(row.items[0].int64Value || ''),
               messageId: row.items[1].textValue || '',
-              message: row.items[2].textValue || '',
-              type: (row.items[3].textValue || 'client') as ChatMessageType, // Приведение типа, возможно, потребуется более строгая проверка
-              timestamp: new Date(Number(row.items[4].uint64Value) / 1000), 
+              userId: Number(row.items[2].int64Value),
+              message: row.items[3].textValue || '',
+              type: (row.items[4].textValue || 'client') as ChatMessageType, // Приведение типа, возможно, потребуется более строгая проверка
+              timestamp: new Date(Number(row.items[5].uint64Value) / 1000), 
             });
           }
         }
@@ -136,7 +143,7 @@ export async function getLastChatMessages(chatId: string, limit: number, iamToke
   }
 }
 
-export async function clearChatMessages(chatId: string): Promise<void> {
+export async function clearChatMessages(chatId: number): Promise<void> {
     const driver = await getDriver();
     const tableName = 'chats'; // Имя вашей таблицы
 
@@ -154,7 +161,7 @@ export async function clearChatMessages(chatId: string): Promise<void> {
         await driver.tableClient.withSession(async (session) => {
             const preparedQuery = await session.prepareQuery(query);
             await session.executeQuery(preparedQuery, {
-                '$chatId': { type: Types.UTF8, value: { textValue: chatId } },
+                '$chatId': { type: Types.INT64, value: { int64Value: chatId } },
             });
         });
         logger.info(`Successfully cleared messages for chatId: ${chatId}`);
@@ -401,7 +408,7 @@ export async function deleteQuizState(userId: string): Promise<void> {
 
 export type UserMode = 'demo' | 'quiz' | 'none';
 
-export async function getMode(userId: string, iamToken?: string): Promise<UserMode | null> {
+export async function getMode(userId: string, iamToken?: string): Promise<UserMode> {
     const currentDriver = await getDriver(iamToken);
     try {
         return await currentDriver.tableClient.withSession(async (session) => {
@@ -418,10 +425,10 @@ export async function getMode(userId: string, iamToken?: string): Promise<UserMo
                 const modeValue = row.items![0].textValue;
                 return (modeValue || 'none') as UserMode;
             }
-            return null;
+            return 'none';
         });
     } catch (error) {
-        logger.error(`Failed to get mode for user ${userId}:`, error);
+        logger.error(`Failed to get mode for user ${userId}:`, JSON.stringify(error));
         throw error;
     }
 }

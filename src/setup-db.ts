@@ -17,12 +17,13 @@ async function ensureChatsTableExists(iamToken?: string): Promise<void> {
 		  await session.createTable(
 			'chats',
 			new TableDescription()
-			  .withColumn(new Column('chatId', Types.UTF8))
+			  .withColumn(new Column('chatId', Types.INT64))
 			  .withColumn(new Column('messageId', Types.UTF8))
+			  .withColumn(new Column('userId', Types.INT64))
 			  .withColumn(new Column('message', Types.UTF8))
 			  .withColumn(new Column('timestamp', Types.TIMESTAMP))
 			  .withColumn(new Column('type', Types.UTF8))
-			  .withPrimaryKeys('chatId', 'messageId')
+			  .withPrimaryKeys('chatId', 'messageId', 'userId')
 		  );
 		  logger.info("Table 'chats' created successfully.");
 		}
@@ -78,7 +79,7 @@ async function ensurePromptsTableExists(iamToken?: string): Promise<void> {
 			  gptConfig.model, 
 			  gptConfig.completionOptions.stream, 
 			  gptConfig.completionOptions.temperature, 
-			  gptConfig.completionOptions.maxTokens,
+			  gptConfig.completionOptions.maxTokens, 
 			  iamToken
 			); 
 			logger.info('Initial base prompt added to DB from system_prompt.md and gpt.json after table creation.');

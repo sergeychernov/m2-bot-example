@@ -218,5 +218,88 @@ export const migrations: Migration[] = [
                 throw error;
             });
         },
+    },
+    {
+        version: 6,
+        name: 'AddUserIdAndChangeChatIdToChatsTable',
+        async up(driver: Driver, logger: Logger) {
+            logger.info(`Applying migration: AddUserIdAndChangeChatIdToChatsTable`);
+
+            await driver.queryClient.do({ fn: async (session: QuerySession) => {
+                logger.info('Dropping temporary chats_new table if it exists...');
+                await session.execute({ text: 'DROP TABLE IF EXISTS chats_new;' });
+
+                logger.info('Creating temporary chats_new table...');
+                await session.execute({ text: `
+                    CREATE TABLE chats_new (
+                        chatId Int64,
+                        messageId Utf8,
+                        userId Int64,
+                        message Utf8,
+                        timestamp Timestamp,
+                        type Utf8,
+                        realtorId Utf8,
+                        PRIMARY KEY (chatId, messageId, userId)
+                    );
+                `});
+
+                logger.info('Copying data from chats to chats_new...');
+                await session.execute({ text: `
+                    UPSERT INTO chats_new (chatId, messageId, userId, message, timestamp, type, realtorId)
+                    SELECT CAST(chatId AS Int64), messageId, 0 AS userId, message, timestamp, type, realtorId FROM chats;
+                `});
+
+                logger.info('Dropping old chats table...');
+                await session.execute({ text: 'DROP TABLE chats;' });
+
+                logger.info('Renaming chats_new to chats...');
+                await session.execute({ text: 'ALTER TABLE chats_new RENAME TO chats;' });
+
+                logger.info('Migration AddUserIdAndChangeChatIdToChatsTable applied successfully');
+            }}).catch(async (error) => {
+                logger.error('Failed to apply migration AddUserIdAndChangeChatIdToChatsTable:', JSON.stringify(error));
+                try {
+                    await driver.queryClient.do({ fn: async (session: QuerySession) => {
+                        logger.info('Attempting to clean up by dropping chats_new table...');
+                        await session.execute({ text: 'DROP TABLE IF EXISTS chats_new;' });
+                    }});
+                } catch (cleanupError) {
+                    logger.error('Failed to cleanup chats_new table after migration failure:', JSON.stringify(cleanupError));
+                }
+                throw error;
+            });
+        },
+    },
+    {
+        version: 7,
+        name: 'RemoveRealtorIdFromChatsTable',
+        async up(driver: Driver, logger: Logger) {
+            logger.info(`Applying migration: RemoveRealtorIdFromChatsTable`);
+            try {
+                await driver.queryClient.do({
+                    fn: async (session: QuerySession) => { 
+                        const query = `
+                            ALTER TABLE chats
+                            DROP COLUMN realtorId;
+                        `;
+                        logger.info('Executing query:\n' + query);
+                        await session.execute({ text: query });
+                        logger.info('Migration RemoveRealtorIdFromChatsTable applied successfully');
+                    }
+                });
+            } catch (error) {
+                if (error instanceof Error) {
+                    if (error.message.includes('Column not found') || error.message.includes('does not exist')) {
+                        logger.warn(`Could not drop column realtorId, it might not exist: ${error.message}`);
+                    } else {
+                        logger.error('Failed to apply migration RemoveRealtorIdFromChatsTable:', error);
+                        throw error;
+                    }
+                } else {
+                    logger.error('Failed to apply migration RemoveRealtorIdFromChatsTable with a non-Error object:', error);
+                    throw error;
+                }
+            }
+        },
     }
 ];
