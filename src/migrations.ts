@@ -174,6 +174,53 @@ export const migrations: Migration[] = [
     },
     {
         version: 5,
+        name: 'MakeProfileAndModeOptionalInUsers',
+        async up(driver: Driver, logger: Logger) {
+            logger.info(`Applying migration: MakeProfileAndModeOptionalInUsers`);
+
+            await driver.queryClient.do({ fn: async (session: QuerySession) => {
+                logger.info('Dropping temporary users_new_optional table if it exists...');
+                await session.execute({ text: 'DROP TABLE IF EXISTS users_new_optional;' });
+
+                logger.info('Creating temporary users_new_optional table with optional profile and mode...');
+                await session.execute({ text: `
+                    CREATE TABLE users_new_optional (
+                        userId Utf8,
+                        profile Optional<Json>,
+                        mode Optional<Utf8>,
+                        PRIMARY KEY (userId)
+                    );
+                `});
+
+                logger.info('Copying data from users to users_new_optional...');
+                await session.execute({ text: `
+                    UPSERT INTO users_new_optional (userId, profile, mode)
+                    SELECT userId, profile, mode FROM users;
+                `});
+
+                logger.info('Dropping old users table...');
+                await session.execute({ text: 'DROP TABLE users;' });
+
+                logger.info('Renaming users_new_optional to users...');
+                await session.execute({ text: 'ALTER TABLE users_new_optional RENAME TO users;' });
+
+                logger.info('Migration MakeProfileAndModeOptionalInUsers applied successfully');
+            }}).catch(async (error) => {
+                logger.error('Failed to apply migration MakeProfileAndModeOptionalInUsers:', JSON.stringify(error));
+                try {
+                    await driver.queryClient.do({ fn: async (session: QuerySession) => {
+                        logger.info('Attempting to clean up by dropping users_new_optional table...');
+                        await session.execute({ text: 'DROP TABLE IF EXISTS users_new_optional;' });
+                    }});
+                } catch (cleanupError) {
+                    logger.error('Failed to cleanup users_new_optional table after migration failure:', JSON.stringify(cleanupError));
+                }
+                throw error;
+            });
+        },
+    },
+    {
+        version: 6,
         name: 'AddQuizConfigToPromptsTable',
         async up(driver: Driver, logger: Logger) {
             logger.info(`Applying migration: AddQuizConfigToPromptsTable`);

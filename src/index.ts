@@ -2,14 +2,14 @@ import { Bot,  InlineKeyboard } from 'grammy';
 import fs from 'fs'; // fs больше не нужен здесь для system_prompt.md
 import path from 'path'; // path больше не нужен здесь для system_prompt.md
 import { getYandexGPTResponse, setIamToken } from './gpt'; 
-import {
-    addChatMessage,
+import { 
+    addChatMessage, 
     ChatMessageType,
-    getDriver,
+    getDriver, 
     getLastChatMessages,
     getMode,
     setMode,
-} from './ydb'; 
+} from './ydb';
 
 import { iam } from './iam';
 import { Driver } from 'ydb-sdk';
@@ -182,7 +182,7 @@ bot.command('clients', async (ctx) => {
   await ctx.reply('Выберите категорию клиентов:', { reply_markup: keyboard });
 });
 
-// CallbackQuery для клиентов
+// Обработчики для действий с клиентами (callback_query)
 bot.callbackQuery('active_clients', async (ctx) => {
   await ctx.answerCallbackQuery();
   const clients = loadClients();
@@ -248,7 +248,102 @@ bot.callbackQuery(/client_(.+)/, async (ctx) => {
   }
 });
 
+// Команда /demo
+bot.command('demo', async (ctx) => {
+  const userId = ctx.from?.id.toString();
+  if (!userId) {
+    await ctx.reply('Не удалось определить ваш ID.');
+    return;
+  }
+
+  try {
+    const currentMode = await getMode(userId);
+    if (currentMode === 'demo') {
+      await setMode(userId, 'none');
+      await ctx.reply('Режим демонстрации выключен.');
+    } else {
+      await setMode(userId, 'demo');
+      await ctx.reply(`Режим демонстрации включен. Теперь вы можете пообщаться со своим аватаром отсюда.`);
+    }
+  } catch (error) {
+    console.error('Failed to toggle demo mode:', error);
+    await ctx.reply('Произошла ошибка при переключении режима демонстрации.');
+  }
+});
+
 debugClientCommands(bot);
+
+// Новый обработчик для сообщений, начинающихся с 'y:'
+const yandexGptRegex = /^(.*)/i;
+// от бота не перехватывает
+bot.hears(yandexGptRegex, async (ctx) => {
+    console.log('Received Yandex GPT command:', JSON.stringify(ctx));
+  const businessConnectionId = ctx.businessConnectionId || ctx.message?.business_connection_id;
+  let type: ChatMessageType;
+  if (!businessConnectionId) {
+    type = 'admin';
+  } else if (ctx.from?.is_bot) {
+    type = 'bot';
+  } else if (ctx.from?.id === ctx.chat?.id) {
+    type = 'client';
+  } else {
+    type = 'realtor'
+  }
+  if (businessConnectionId && type === 'client') {
+    await addChatMessage(ctx.chat?.id?.toString() || '0', ctx.message?.message_id?.toString() || '0', ctx.message?.text || '0', type);
+        const promptText = ctx.message?.text; // Переименовал prompt в promptText для ясности
+        if (promptText) {
+            try {
+
+                if (!FOLDER_ID) {
+                    console.error('Yandex Folder ID is not configured.');
+                    await ctx.reply('Ошибка конфигурации: Yandex Folder ID не настроен.');
+                    return;
+                }
+
+                const historyMessages = await getLastChatMessages(ctx.chat?.id?.toString() || '0', 20);
+                // Формируем только сообщения пользователя и ассистента для передачи в getYandexGPTResponse
+                const gptMessages = historyMessages.map((v) => ({
+                    role: (v.type === 'client' ? 'user' : 'assistant') as 'user' | 'assistant',
+                    text: v.message
+                }));
+                
+                if (!ctx.from) {
+                    console.error('Cannot get user ID from context');
+                    await ctx.reply('Ошибка: не удалось определить пользователя.');
+                    return;
+                }
+
+                const gptResponse = await getYandexGPTResponse(gptMessages, ctx.from.id.toString());
+                
+                if (gptResponse && gptResponse.text) {
+                
+
+                // Рассчитываем задержку
+                const textToReply = gptResponse.text;
+                const startDelay = promptText.length * 100 + 2000; // Changed from prompt.length
+                const delay = textToReply.length * 200; // 300 мс на символ
+                await imitateTyping(ctx, startDelay, delay);
+
+                const r = await ctx.reply(textToReply + `\nИспользовано: ${(parseInt((gptResponse?.totalUsage || '0').toString()) / 50).toFixed(2)} коп`);
+                
+                await addChatMessage(ctx.chat?.id?.toString() || '0', r.message_id.toString() || '0', textToReply, 'bot');
+                    
+              } else {
+                    await ctx.reply('Не удалось получить ответ от YandexGPT.');
+                }
+            } catch (error) {
+                console.error('Error processing Yandex GPT request:', JSON.stringify(error));
+                await ctx.reply('Произошла ошибка при обработке вашего запроса к YandexGPT.');
+            }
+        } else {
+            await ctx.reply('Пожалуйста, укажите ваш запрос после "y:". Например: y: расскажи анекдот');
+        }
+    } else {
+      }
+});
+
+
 
 const FOLDER_ID = process.env.YC_FOLDER_ID; 
 
