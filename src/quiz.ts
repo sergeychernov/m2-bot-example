@@ -1,5 +1,5 @@
 import {Bot, Context, InlineKeyboard} from 'grammy';
-import { addBotClientData, getBotClientData } from './ydb';
+import { addBotClientData, getBotClientData, saveQuizState, loadQuizState, deleteQuizState } from './ydb';
 
 export type QuizQuestion = {
   id: string;
@@ -56,63 +56,65 @@ export function createQuiz(quizConfig: QuizConfig) {
 
   async function startQuiz(ctx: Context, allowExit = false) {
     if (!ctx.chat || !ctx.from) return;
-    const chatId = ctx.chat.id.toString();
     const userId = ctx.from.id.toString();
 
-    const userData = await getBotClientData(userId);
-    const oldAnswers: Record<string, string> = {};
-    if (userData) {
-      for (const question of questions) {
-        if (userData[question.key]) {
-          oldAnswers[question.id] = userData[question.key];
+    let state = await loadQuizState(userId);
+    if (state) {
+      quizStates[userId] = { ...state };
+    } else {
+      const userData = await getBotClientData(userId);
+      const oldAnswers: Record<string, string> = {};
+      if (userData) {
+        for (const question of questions) {
+          if (userData[question.key]) {
+            oldAnswers[question.id] = userData[question.key];
+          }
         }
       }
+      quizStates[userId] = { step: 0, answers: { ...oldAnswers }, allowExit };
+      await saveQuizState(userId, 0, { ...oldAnswers }, allowExit);
     }
-    
-    quizStates[chatId] = { step: 0, answers: { ...oldAnswers }, allowExit };
-
     if (quizDescription) {
       await ctx.reply(quizDescription);
     }
-
-    await sendQuestion(ctx, quizStates[chatId]);
+    await sendQuestion(ctx, quizStates[userId]);
   }
 
   async function sendQuestion(ctx: Context, state: { step: number; answers: Record<string, string>; allowExit: boolean }) {
     const currentQ = questions[state.step];
     if (!currentQ) return;
-    
     const keyboard = new InlineKeyboard();
     if (currentQ.type === 'buttons') {
-        currentQ.options?.forEach((option: string) => keyboard.text(option, `simple_quiz_${option}`).row());
+      currentQ.options?.forEach((option: string) => keyboard.text(option, `simple_quiz_${option}`).row());
     }
-
     if (state.allowExit && buttonLabels?.exit) {
-        keyboard.text(buttonLabels.exit, 'exit_quiz').row();
+      keyboard.text(buttonLabels.exit, 'exit_quiz').row();
     }
-
     const messageOptions = {
-        reply_markup: keyboard.inline_keyboard.length > 0 ? keyboard : undefined,
-        parse_mode: 'HTML' as const
+      reply_markup: keyboard.inline_keyboard.length > 0 ? keyboard : undefined,
+      parse_mode: 'HTML' as const
     };
-
     if (currentQ.imageUrl) {
-        await ctx.replyWithPhoto(currentQ.imageUrl, {
-            caption: currentQ.question,
-            ...messageOptions,
-        });
+      await ctx.replyWithPhoto(currentQ.imageUrl, {
+        caption: currentQ.question,
+        ...messageOptions,
+      });
     } else {
-        await ctx.reply(currentQ.question, messageOptions);
+      await ctx.reply(currentQ.question, messageOptions);
     }
   }
 
   async function handleQuizText(ctx: Context) {
     if (!ctx.chat || !ctx.message || typeof ctx.message.text !== 'string') return;
-    
-    const chatId = ctx.chat.id.toString();
-    const state = quizStates[chatId];
+    const userId = ctx.from?.id.toString();
+
+    if (!userId) {
+      return;
+    }
+
+    let state = await ensureQuizState(ctx, quizStates, loadQuizState);
     if (!state) return;
-    
+
     const currentQ = questions[state.step];
     if (currentQ.type === 'text') {
       const validationResult = validateAnswer(ctx.message.text, currentQ.validation);
@@ -123,11 +125,13 @@ export function createQuiz(quizConfig: QuizConfig) {
       state.answers[currentQ.id] = ctx.message.text;
       state.step += 1;
       await saveUserFromState(ctx, state);
+      await saveQuizState(userId, state.step, state.answers, state.allowExit);
       if (state.step < questions.length) {
         await sendQuestion(ctx, state);
       } else {
         await showQuizResult(ctx, state.answers);
-        delete quizStates[chatId];
+        await deleteQuizState(userId);
+        delete quizStates[userId];
       }
     } else if (currentQ.type === 'buttons') {
       await ctx.reply('Пожалуйста, выберите один из предложенных вариантов с помощью кнопок.');
@@ -136,32 +140,42 @@ export function createQuiz(quizConfig: QuizConfig) {
 
   async function handleQuizButton(ctx: Context) {
     if (!ctx.chat || !ctx.match) return;
-    
-    const chatId = ctx.chat.id.toString();
-    const state = quizStates[chatId];
+    const userId = ctx.from?.id.toString();
+    if (!userId) {
+      return;
+    }
+
+    let state = await ensureQuizState(ctx, quizStates, loadQuizState);
     if (!state) return;
-    
+
     const currentQ = questions[state.step];
     if (currentQ.type === 'buttons') {
       state.answers[currentQ.id] = ctx.match[1];
       state.step += 1;
       await saveUserFromState(ctx, state);
+      await saveQuizState(userId, state.step, state.answers, state.allowExit);
       await ctx.answerCallbackQuery();
       if (state.step < questions.length) {
         await sendQuestion(ctx, state);
       } else {
         await showQuizResult(ctx, state.answers);
-        delete quizStates[chatId];
+        await deleteQuizState(userId);
+        delete quizStates[userId];
       }
     }
   }
 
   async function handleQuizExit(ctx: Context) {
     if (!ctx.chat) return;
-    
-    const chatId = ctx.chat.id.toString();
-    delete quizStates[chatId];
+    const userId = ctx.from?.id?.toString();
+    if (!userId) {
+      return;
+    }
+    delete quizStates[userId];
     await ctx.answerCallbackQuery();
+    if (userId) {
+      await deleteQuizState(userId);
+    }
     if (exitText) {
       await ctx.reply(exitText);
     }
@@ -279,4 +293,27 @@ function validateAnswer(answer: string, validation?: QuizQuestion['validation'])
   }
 
   return { isValid: true };
+}
+
+// чтобы продолжать квиз после паузы
+async function ensureQuizState(
+    ctx: Context,
+    quizStates: Record<string, { step: number; answers: Record<string, string>; allowExit: boolean }>,
+    loadQuizState: (userId: string) => Promise<{ step: number; answers: Record<string, string>; allowExit: boolean } | null>
+): Promise<{ step: number; answers: Record<string, string>; allowExit: boolean } | null> {
+  const userId = ctx.from?.id?.toString();
+  if (!userId) return null;
+
+  let state = quizStates[userId];
+  if (!state) {
+    const dbState = await loadQuizState(userId);
+    if (dbState) {
+      state = { ...dbState };
+      quizStates[userId] = state;
+    } else {
+      await ctx.reply('Не удалось восстановить состояние квиза. Начните квиз заново командой /quiz.');
+      return null;
+    }
+  }
+  return state;
 }

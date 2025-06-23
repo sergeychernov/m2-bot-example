@@ -334,3 +334,74 @@ export async function getBotClientData(botClientId: string, iamToken?: string): 
     throw error;
   }
 }
+
+export async function saveQuizState(
+  userId: string,
+  step: number,
+  answers: Record<string, string>,
+  allowExit: boolean
+): Promise<void> {
+  const currentDriver = await getDriver();
+  await currentDriver.tableClient.withSession(async (session) => {
+    const query = `
+      DECLARE $userId AS Utf8;
+      DECLARE $step AS Int32;
+      DECLARE $answers AS Json;
+      DECLARE $allowExit AS Bool;
+      UPSERT INTO quiz_states (userId, step, answers, allowExit)
+      VALUES ($userId, $step, $answers, $allowExit);
+    `;
+    await session.executeQuery(query, {
+      $userId: { type: Types.UTF8, value: { textValue: userId } },
+      $step: { type: Types.INT32, value: { int32Value: step } },
+      $answers: { type: Types.JSON, value: { textValue: JSON.stringify(answers) } },
+      $allowExit: { type: Types.BOOL, value: { boolValue: allowExit } },
+    });
+  });
+}
+
+export async function loadQuizState(
+    userId: string,
+): Promise<{ step: number; answers: Record<string, string>; allowExit: boolean } | null> {
+  const currentDriver = await getDriver();
+  return await currentDriver.tableClient.withSession(async (session) => {
+    const query = `
+      DECLARE $userId AS Utf8;
+      SELECT step, answers, allowExit FROM quiz_states
+      WHERE userId = $userId
+      LIMIT 1;
+    `;
+    const { resultSets } = await session.executeQuery(query, {
+      $userId: { type: Types.UTF8, value: { textValue: userId } },
+    });
+    if (resultSets[0]?.rows && resultSets[0].rows.length > 0) {
+      const row = resultSets[0].rows[0];
+      if (
+          row.items &&
+          typeof row.items[0]?.int32Value === 'number' &&
+          typeof row.items[1]?.textValue === 'string' &&
+          typeof row.items[2]?.boolValue === 'boolean'
+      ) {
+        return {
+          step: row.items[0].int32Value,
+          answers: JSON.parse(row.items[1].textValue),
+          allowExit: row.items[2].boolValue,
+        };
+      }
+    }
+    return null;
+  });
+}
+
+export async function deleteQuizState(userId: string): Promise<void> {
+  const currentDriver = await getDriver();
+  await currentDriver.tableClient.withSession(async (session) => {
+    const query = `
+      DECLARE $userId AS Utf8;
+      DELETE FROM quiz_states WHERE userId = $userId;
+    `;
+    await session.executeQuery(query, {
+      $userId: { type: Types.UTF8, value: { textValue: userId } },
+    });
+  });
+}
