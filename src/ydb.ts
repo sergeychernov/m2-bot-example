@@ -287,21 +287,21 @@ export async function closeDriver() {
   }
 }
 
-export async function addBotClientData(botClientId: string, profile: Record<string, any>, iamToken?: string): Promise<void> {
+export async function addBotClientData(userId: string, profile: Record<string, any>, iamToken?: string): Promise<void> {
   const currentDriver = await getDriver(iamToken);
   try {
     await currentDriver.tableClient.withSession(async (session) => {
       const query = `
-        DECLARE $botClientId AS Utf8;
+        DECLARE $userId AS Utf8;
         DECLARE $profile AS Json;
-        UPSERT INTO users (botClientId, profile)
-        VALUES ($botClientId, $profile);
+        UPSERT INTO users (userId, profile, mode)
+        VALUES ($userId, $profile, 'none');
       `;
       await session.executeQuery(query, {
-        $botClientId: { type: Types.UTF8, value: { textValue: botClientId } },
+        $userId: { type: Types.UTF8, value: { textValue: userId } },
         $profile: { type: Types.JSON, value: { textValue: JSON.stringify(profile) } },
       });
-      logger.info(`User data for ${botClientId} added/updated in 'users' table.`);
+      logger.info(`User data for ${userId} added/updated in 'users' table.`);
     });
   } catch (error) {
     logger.error('Failed to add user data:', error);
@@ -309,23 +309,22 @@ export async function addBotClientData(botClientId: string, profile: Record<stri
   }
 }
 
-export async function getBotClientData(botClientId: string, iamToken?: string): Promise<Record<string, any> | null> {
+export async function getBotClientData(userId: string, iamToken?: string): Promise<Record<string, any> | null> {
   const currentDriver = await getDriver(iamToken);
   try {
     return await currentDriver.tableClient.withSession(async (session) => {
       const query = `
-        DECLARE $botClientId AS Utf8;
-        SELECT profile FROM users WHERE botClientId = $botClientId LIMIT 1;
+        DECLARE $userId AS Utf8;
+        SELECT profile, mode FROM users WHERE userId = $userId LIMIT 1;
       `;
       const { resultSets } = await session.executeQuery(query, {
-        $botClientId: { type: Types.UTF8, value: { textValue: botClientId } },
+        $userId: { type: Types.UTF8, value: { textValue: userId } },
       });
       if (resultSets[0]?.rows && resultSets[0].rows.length > 0) {
         const row = resultSets[0].rows[0];
-        const jsonData = row?.items?.[0]?.textValue;
-        if (jsonData) {
-          return JSON.parse(jsonData);
-        }
+        const profile = JSON.parse(row.items![0].textValue || '{}');
+        const mode = row.items![1].textValue;
+        return { ...profile, mode };
       }
       return null;
     });
@@ -404,4 +403,52 @@ export async function deleteQuizState(userId: string): Promise<void> {
       $userId: { type: Types.UTF8, value: { textValue: userId } },
     });
   });
+}
+
+export type UserMode = 'demo' | 'quiz' | 'none';
+
+export async function getMode(userId: string, iamToken?: string): Promise<UserMode | null> {
+    const currentDriver = await getDriver(iamToken);
+    try {
+        return await currentDriver.tableClient.withSession(async (session) => {
+            const query = `
+                DECLARE $userId AS Utf8;
+                SELECT mode FROM users WHERE userId = $userId LIMIT 1;
+            `;
+            const { resultSets } = await session.executeQuery(query, {
+                $userId: { type: Types.UTF8, value: { textValue: userId } },
+            });
+            if (resultSets[0]?.rows && resultSets[0].rows.length > 0) {
+                const row = resultSets[0].rows[0];
+                // Убедимся, что у row.items[0] есть значение, иначе вернем 'none'
+                const modeValue = row.items![0].textValue;
+                return (modeValue || 'none') as UserMode;
+            }
+            return null;
+        });
+    } catch (error) {
+        logger.error(`Failed to get mode for user ${userId}:`, error);
+        throw error;
+    }
+}
+
+export async function setMode(userId: string, mode: UserMode, iamToken?: string): Promise<void> {
+    const currentDriver = await getDriver(iamToken);
+    try {
+        await currentDriver.tableClient.withSession(async (session) => {
+            const query = `
+                DECLARE $userId AS Utf8;
+                DECLARE $mode AS Utf8;
+                UPDATE users SET mode = $mode WHERE userId = $userId;
+            `;
+            await session.executeQuery(query, {
+                $userId: { type: Types.UTF8, value: { textValue: userId } },
+                $mode: { type: Types.UTF8, value: { textValue: mode } },
+            });
+            logger.info(`Mode for user ${userId} set to ${mode}.`);
+        });
+    } catch (error) {
+        logger.error(`Failed to set mode for user ${userId}:`, error);
+        throw error;
+    }
 }
