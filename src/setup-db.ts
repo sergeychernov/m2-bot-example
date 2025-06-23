@@ -72,9 +72,6 @@ async function ensurePromptsTableExists(iamToken?: string): Promise<void> {
 			const gptConfigPath = path.resolve(__dirname, 'gpt.json');
 			const gptConfigFile = fs.readFileSync(gptConfigPath, 'utf-8');
 			const gptConfig = JSON.parse(gptConfigFile);
-			const quizConfigPath = path.resolve(__dirname, 'quiz.json');
-			const quizConfigFile = fs.readFileSync(quizConfigPath, 'utf-8');
-			const quizConfig = JSON.parse(quizConfigFile);
 
 			await addPrompt(
 			  initialPromptText, 
@@ -83,7 +80,6 @@ async function ensurePromptsTableExists(iamToken?: string): Promise<void> {
 			  gptConfig.completionOptions.stream, 
 			  gptConfig.completionOptions.temperature, 
 			  gptConfig.completionOptions.maxTokens,
-			  quizConfig,
 			  iamToken
 			); 
 			logger.info('Initial base prompt added to DB from system_prompt.md and gpt.json after table creation.');
@@ -143,6 +139,31 @@ async function ensureQuizStatesTableExists(iamToken?: string): Promise<void> {
 						.withPrimaryKeys('userId')
 				);
 				logger.info("Table 'quiz_states' created successfully.");
+			}
+		});
+	} catch (error) {
+		logger.error('Failed to ensure quiz_states table exists:', error);
+		throw error;
+	}
+}
+
+async function ensureQuizConfigsTableExists(iamToken?: string): Promise<void> {
+	const currentDriver = await getDriver(iamToken);
+	try {
+		await currentDriver.tableClient.withSession(async (session) => {
+			try {
+				await session.describeTable('quiz_configs');
+				logger.info("Table 'quiz_configs' already exists.");
+			} catch (error: any) {
+				logger.info("Table 'quiz_configs' not found, creating...");
+				await session.createTable(
+					'quiz_configs',
+					new TableDescription()
+						.withColumn(new Column('id', Types.UTF8))
+						.withColumn(new Column('quizConfig', Types.JSON))
+						.withPrimaryKeys('id')
+				);
+				logger.info("Table 'quiz_configs' created successfully.");
 			}
 		});
 	} catch (error) {
@@ -310,6 +331,7 @@ export async function setupDatabase() {
     await ensurePromptsTableExists();
     await ensureUsersTableExists();
 	await ensureQuizStatesTableExists();
+	await ensureQuizConfigsTableExists();
     await ensureMigrationsTableExists();
     await applyMigrations();
     console.log('Database setup completed successfully.');
