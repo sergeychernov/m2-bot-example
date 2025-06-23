@@ -22,7 +22,6 @@ async function ensureChatsTableExists(iamToken?: string): Promise<void> {
 			  .withColumn(new Column('message', Types.UTF8))
 			  .withColumn(new Column('timestamp', Types.TIMESTAMP))
 			  .withColumn(new Column('type', Types.UTF8))
-			  .withColumn(new Column('realtorId', Types.UTF8)) // Добавлено новое поле realtorId
 			  .withPrimaryKeys('chatId', 'messageId')
 		  );
 		  logger.info("Table 'chats' created successfully.");
@@ -161,6 +160,7 @@ async function ensureQuizConfigsTableExists(iamToken?: string): Promise<void> {
 					new TableDescription()
 						.withColumn(new Column('id', Types.UTF8))
 						.withColumn(new Column('quizConfig', Types.JSON))
+						.withColumn(new Column('createdAt', Types.TIMESTAMP))
 						.withPrimaryKeys('id')
 				);
 				logger.info("Table 'quiz_configs' created successfully.");

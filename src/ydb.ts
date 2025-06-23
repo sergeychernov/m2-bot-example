@@ -8,7 +8,6 @@ import {
 
 } from 'ydb-sdk';
 import crypto from 'crypto';
-import {QuizConfig} from "./quiz";
 
 const endpoint = process.env.YDB_ENDPOINT;
 const database = process.env.YDB_DATABASE;
@@ -175,7 +174,6 @@ export interface Prompt {
   stream: boolean; // Новое поле
   temperature: number; // Новое поле
   maxTokens: number; // Новое поле
-  quizConfig: QuizConfig;
 }
 
 
@@ -187,7 +185,6 @@ export async function addPrompt(
   stream: boolean, // Новый параметр
   temperature: number, // Новый параметр
   maxTokens: number, // Новый параметр
-  quizConfig?: QuizConfig | {},
   iamToken?: string
 ): Promise<string> {
   const currentDriver = await getDriver(iamToken);
@@ -205,10 +202,9 @@ export async function addPrompt(
         DECLARE $stream AS Bool;
         DECLARE $temperature AS Double;
         DECLARE $maxTokens AS Int64;
-        DECLARE $quizConfig AS Json;
 
-        UPSERT INTO prompts (promptId, promptText, promptType, createdAt, model, stream, temperature, maxTokens, quizConfig)
-        VALUES ($promptId, $promptText, $promptType, $createdAt, $model, $stream, $temperature, $maxTokens, $quizConfig);
+        UPSERT INTO prompts (promptId, promptText, promptType, createdAt, model, stream, temperature, maxTokens)
+        VALUES ($promptId, $promptText, $promptType, $createdAt, $model, $stream, $temperature, $maxTokens);
       `;
 
       const timestampMicroseconds = createdAt.getTime() * 1000;
@@ -221,8 +217,7 @@ export async function addPrompt(
         $model: { type: Types.UTF8, value: { textValue: model } },
         $stream: { type: Types.BOOL, value: { boolValue: stream } },
         $temperature: { type: Types.DOUBLE, value: { doubleValue: temperature } },
-        $maxTokens: { type: Types.INT64, value: { int64Value: maxTokens } },
-        $quizConfig: { type: Types.JSON, value: { textValue: quizConfig ? JSON.stringify(quizConfig) : '{}' } }
+        $maxTokens: { type: Types.INT64, value: { int64Value: maxTokens } }
       });
       logger.info(`Prompt ${promptId} of type ${promptType} added to 'prompts' table.`);
     });
@@ -240,7 +235,7 @@ export async function getLatestPromptByType(promptType: string, iamToken?: strin
       const query = `
         DECLARE $promptType AS Utf8;
 
-        SELECT promptId, promptText, promptType, createdAt, model, \`stream\`, temperature, maxTokens, quizConfig
+        SELECT promptId, promptText, promptType, createdAt, model, \`stream\`, temperature, maxTokens
         FROM prompts
         WHERE promptType = $promptType
         ORDER BY createdAt DESC
@@ -263,9 +258,6 @@ export async function getLatestPromptByType(promptType: string, iamToken?: strin
             stream: row.items[5].boolValue || false,
             temperature: row.items[6].doubleValue || 0.6,
             maxTokens: Number(row.items[7].int64Value) || 20000,
-            quizConfig: row.items[8]?.textValue
-              ? JSON.parse(row.items[8].textValue)
-              : undefined,
           };
         }
       }
@@ -453,4 +445,42 @@ export async function setMode(userId: string, mode: UserMode, iamToken?: string)
         logger.error(`Failed to set mode for user ${userId}:`, error);
         throw error;
     }
+}
+
+export async function saveQuizConfig(quizConfig: any, iamToken?: string): Promise<void> {
+  const currentDriver = await getDriver(iamToken);
+  const id = crypto.randomUUID();
+  const createdAt = new Date();
+  const timestampMicroseconds = createdAt.getTime() * 1000;
+  await currentDriver.tableClient.withSession(async (session) => {
+    const query = `
+      DECLARE $id AS Utf8;
+      DECLARE $quizConfig AS Json;
+      DECLARE $createdAt AS Timestamp;
+      UPSERT INTO quiz_configs (id, quizConfig, createdAt) VALUES ($id, $quizConfig, $createdAt);
+    `;
+    await session.executeQuery(query, {
+      $id: { type: Types.UTF8, value: { textValue: id } },
+      $quizConfig: { type: Types.JSON, value: { textValue: JSON.stringify(quizConfig) } },
+      $createdAt: { type: Types.TIMESTAMP, value: { uint64Value: timestampMicroseconds } },
+    });
+    logger.info(`Quiz config saved to quiz_configs table with id=${id}`);
+  });
+}
+
+export async function getQuizConfig(iamToken?: string): Promise<any | null> {
+  const currentDriver = await getDriver(iamToken);
+  return await currentDriver.tableClient.withSession(async (session) => {
+    const query = `
+      SELECT quizConfig FROM quiz_configs ORDER BY createdAt DESC LIMIT 1;
+    `;
+    const { resultSets } = await session.executeQuery(query, {});
+    if (resultSets[0]?.rows && resultSets[0].rows.length > 0) {
+      const row = resultSets[0].rows[0];
+      if (row.items && row.items[0]?.textValue) {
+        return JSON.parse(row.items[0].textValue);
+      }
+    }
+    return null;
+  });
 }

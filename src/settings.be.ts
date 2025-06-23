@@ -1,4 +1,4 @@
-import { addPrompt } from './ydb';
+import { addPrompt, saveQuizConfig } from './ydb';
 import Ajv from 'ajv';
 import addFormats from 'ajv-formats';
 import quizSchema from './quiz-schema.json';
@@ -123,7 +123,8 @@ export async function handleSettingsPost(event: any): Promise<any> {
       };
     }
 
-    await addPrompt(promptText, 'base', model, stream, temperature, maxTokens, quizConfig);
+    await saveQuizConfig(quizConfig);
+    await addPrompt(promptText, 'base', model, stream, temperature, maxTokens);
   }
 
   const formUrl = event.url;

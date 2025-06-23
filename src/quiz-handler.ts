@@ -1,6 +1,6 @@
 import { Bot, Context } from 'grammy';
 import { createQuiz, QuizConfig } from './quiz';
-import {deleteQuizState, getLatestPromptByType, setMode} from './ydb';
+import {deleteQuizState, getQuizConfig} from './ydb';
 
 let quiz: any = null;
 
@@ -48,14 +48,14 @@ export async function startQuizWithFreshConfig(ctx: any, allowExit = false) {
 
 export async function loadQuizConfigFromDb(): Promise<QuizConfig | null> {
     try {
-        const prompt = await getLatestPromptByType('base');
-        if (!prompt || !prompt.quizConfig) {
-            console.warn('Quiz config not found in database!');
+        const config = await getQuizConfig();
+        if (!config) {
+            console.warn('Quiz config not found in quiz_configs table!');
             return null;
         }
-        return prompt.quizConfig;
+        return config;
     } catch (error) {
-        console.error('Failed to load quiz config from DB:', JSON.stringify(error));
+        console.error('Failed to load quiz config from quiz_configs table:', JSON.stringify(error));
         return null;
     }
 }

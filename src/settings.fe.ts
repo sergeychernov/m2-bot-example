@@ -1,8 +1,9 @@
-import { getLatestPromptByType, Prompt } from './ydb';
+import { getLatestPromptByType, Prompt, getQuizConfig } from './ydb';
 import quizSchema from './quiz-schema.json';
 
 export async function renderSettingsPage(): Promise<any> {
   const currentPrompt = await getLatestPromptByType('base') as Prompt;
+  const quizConfig = await getQuizConfig() || {};
 
   // Default values if no prompt is found (e.g., first run before setup-db adds one)
   const promptText = currentPrompt?.promptText || '';
@@ -10,7 +11,6 @@ export async function renderSettingsPage(): Promise<any> {
   const stream = currentPrompt?.stream || false;
   const temperature = currentPrompt?.temperature || 0.6;
   const maxTokens = currentPrompt?.maxTokens || 20000;
-  const quizConfig = currentPrompt?.quizConfig || {};
   
   const body = `
       <!DOCTYPE html>
