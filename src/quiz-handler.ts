@@ -4,7 +4,7 @@ import {deleteQuizState, getMode, getQuizConfig, setMode} from './ydb';
 
 let quiz: any = null;
 
-export function quizHandler(bot: Bot) {
+export function initializeQuiz(bot: Bot) {
     bot.command('quiz', async (ctx) => {
         await resetQuizStateForUser(ctx);
         const userId = ctx.from?.id?.toString();

@@ -18,7 +18,7 @@ import { renderSettingsPage } from './settings.fe';
 import { handleSettingsPost } from './settings.be'; // <<< Добавлен этот импорт
 import { debugClientCommands } from './debug-client-commands';
 import { chatHandler } from './chat-handler';
-import { quizHandler } from './quiz-handler';
+import { initializeQuiz } from './quiz-handler';
 
 const botToken = process.env.BOT_TOKEN;
 if (!botToken) {
@@ -83,7 +83,7 @@ const loadClients = (): Client[] => {
 };
 
 // Команды /quiz и /start
-quizHandler(bot);
+initializeQuiz(bot);
 
 // Команда /help
 bot.command('help', async (ctx) => {
@@ -233,10 +233,6 @@ bot.hears(yandexGptRegex, async (ctx, next) => {
       break;
 
   }
-  if (businessConnectionId && type === 'client') {
-
-    } else {
-      }
 
   await next();
 });
