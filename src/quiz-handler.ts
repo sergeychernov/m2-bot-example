@@ -44,6 +44,15 @@ export function initializeQuiz(bot: Bot) {
         quiz.handleQuizButton(ctx);
     });
 
+    bot.callbackQuery(/^multi_/, async (ctx) => {
+        if (!await ensureQuiz(ctx)) return;
+        await quiz.handleMultiSelect(ctx);
+    });
+    bot.callbackQuery('multi_done', async (ctx) => {
+        if (!await ensureQuiz(ctx)) return;
+        await quiz.handleMultiSelect(ctx);
+    });
+
     bot.callbackQuery('exit_quiz', async (ctx) => {
         if (!await ensureQuiz(ctx)) return;
         quiz.handleQuizExit(ctx);
