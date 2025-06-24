@@ -1,5 +1,3 @@
-import * as fs from 'fs';
-import * as path from 'path';
 import {
     getLatestPromptByType,
     Prompt,
@@ -23,13 +21,13 @@ export interface UserDataItem {
 }
 
 // Переименовываем и изменяем функцию для загрузки всех настроек из БД
-async function loadGptSettingsFromDb(iamToken?: string): Promise<Prompt | null> { 
+async function loadGptSettingsFromDb(promptType: string, iamToken?: string): Promise<Prompt | null> { 
     try {
-        const latestPromptSettings = await getLatestPromptByType('base', iamToken);
+        const latestPromptSettings = await getLatestPromptByType(promptType, iamToken);
         if (latestPromptSettings) {
             return latestPromptSettings;
         }
-        console.warn('No base prompt settings found in DB, using fallback or defaults.');
+        console.warn(`No ${promptType} prompt settings found in DB, using fallback or defaults.`);
         // Можно вернуть объект с настройками по умолчанию, если это необходимо
         return null; 
     } catch (error) {
@@ -64,6 +62,7 @@ export async function getYandexGPTResponse(
         role: 'user' | 'assistant';
         text: string;
     }[],
+    promptType: string,
     userId: string
 ): Promise<{ text: string; totalUsage?: string } | null> {
     try {
@@ -77,7 +76,7 @@ export async function getYandexGPTResponse(
             return { text: 'Ошибка конфигурации: Yandex Folder ID не настроен.' };
         }
 
-        const gptSettings = await loadGptSettingsFromDb(currentIamToken);
+        const gptSettings = await loadGptSettingsFromDb(promptType, currentIamToken);
 
         if (!gptSettings) {
             console.error('Failed to load GPT settings from database.');

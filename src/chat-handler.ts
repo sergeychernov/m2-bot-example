@@ -32,7 +32,7 @@ export async function chatHandler(ctx: Context, type: ChatMessageType) {
                 return;
             }
 
-            const gptResponse = await getYandexGPTResponse(gptMessages, ctx.from.id.toString());
+            const gptResponse = await getYandexGPTResponse(gptMessages, 'base', ctx.from.id.toString());
             
             if (gptResponse && gptResponse.text) {
             
