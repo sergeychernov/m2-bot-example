@@ -94,6 +94,34 @@ async function ensurePromptsTableExists(iamToken?: string): Promise<void> {
 	}
   }
 
+async function ensureClientsTableExists(iamToken?: string): Promise<void> {
+	const currentDriver = await getDriver(iamToken);
+	try {
+		await currentDriver.tableClient.withSession(async (session) => {
+			try {
+				await session.describeTable('clients');
+				logger.info("Table 'clients' already exists.");
+			} catch (error: any) {
+				logger.info("Table 'clients' not found, creating...");
+				await session.createTable(
+					'clients',
+					new TableDescription()
+						.withColumn(new Column('id', Types.INT64))
+						.withColumn(new Column('first_name', Types.optional(Types.UTF8)))
+						.withColumn(new Column('last_name', Types.optional(Types.UTF8)))
+						.withColumn(new Column('username', Types.optional(Types.UTF8)))
+						.withColumn(new Column('language_code', Types.optional(Types.UTF8)))
+						.withPrimaryKeys('id')
+				);
+				logger.info("Table 'clients' created successfully.");
+			}
+		});
+	} catch (error) {
+		logger.error('Failed to ensure clients table exists:', error);
+		throw error;
+	}
+}
+
 async function ensureUsersTableExists(iamToken?: string): Promise<void> {
 	const currentDriver = await getDriver(iamToken);
 	try {
@@ -331,6 +359,7 @@ export async function setupDatabase() {
     await ensureChatsTableExists();
     await ensurePromptsTableExists();
     await ensureUsersTableExists();
+	await ensureClientsTableExists();
 	await ensureQuizStatesTableExists();
 	await ensureQuizConfigsTableExists();
     await ensureMigrationsTableExists();

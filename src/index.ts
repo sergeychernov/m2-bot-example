@@ -4,8 +4,10 @@ import path from 'path'; // path больше не нужен здесь для 
 import { setIamToken } from './gpt';
 import {
     ChatMessageType,
+    Client,
     getDriver,
     getMode,
+    setClient,
     setMode,
     UserMode,
 } from './ydb';
@@ -55,32 +57,32 @@ async function initializeBot() {
   }
 }
 
-interface Client { 
-  id: string;
-  firstName: string;
-  lastName: string;
-  category: 'buyer' | 'seller';
-  status: 'active' | 'archived' | 'banned';
-  username?: string;
-  propertyInfo: {
-    type: string;
-    requirements?: string;
-    description?: string;
-    price?: number;
-  };
-}
+// interface Client { 
+//   id: string;
+//   firstName: string;
+//   lastName: string;
+//   category: 'buyer' | 'seller';
+//   status: 'active' | 'archived' | 'banned';
+//   username?: string;
+//   propertyInfo: {
+//     type: string;
+//     requirements?: string;
+//     description?: string;
+//     price?: number;
+//   };
+// }
 
 // Функция для загрузки клиентов из JSON файла
-const loadClients = (): Client[] => {
-  try {
-    const filePath = path.resolve(__dirname, 'clients.json'); // Путь теперь относительно __dirname внутри src
-    const fileContent = fs.readFileSync(filePath, 'utf-8');
-    return JSON.parse(fileContent) as Client[];
-  } catch (error) {
-    console.error('Error loading clients.json:', error);
-    return [];
-  }
-};
+// const loadClients = (): Client[] => {
+//   try {
+//     const filePath = path.resolve(__dirname, 'clients.json'); // Путь теперь относительно __dirname внутри src
+//     const fileContent = fs.readFileSync(filePath, 'utf-8');
+//     return JSON.parse(fileContent) as Client[];
+//   } catch (error) {
+//     console.error('Error loading clients.json:', error);
+//     return [];
+//   }
+// };
 
 // Команды /quiz и /start
 initializeQuiz(bot);
@@ -107,23 +109,23 @@ bot.command('clients', async (ctx) => {
 });
 
 // Обработчики для действий с клиентами (callback_query)
-bot.callbackQuery('active_clients', async (ctx) => {
-  await ctx.answerCallbackQuery();
-  const clients = loadClients();
-  const activeClients = clients.filter(client => client.status === 'active');
+// bot.callbackQuery('active_clients', async (ctx) => {
+//   await ctx.answerCallbackQuery();
+//   const clients = loadClients();
+//   const activeClients = clients.filter(client => client.status === 'active');
 
-  if (activeClients.length === 0) {
-    await ctx.reply('Активных клиентов нет.');
-    return;
-  }
+//   if (activeClients.length === 0) {
+//     await ctx.reply('Активных клиентов нет.');
+//     return;
+//   }
 
-  const keyboard = new InlineKeyboard();
-  activeClients.forEach(client => {
-    keyboard.text(`${client.firstName} ${client.lastName}`, `client_${client.id}`).row();
-  });
+//   const keyboard = new InlineKeyboard();
+//   activeClients.forEach(client => {
+//     keyboard.text(`${client.firstName} ${client.lastName}`, `client_${client.id}`).row();
+//   });
 
-  await ctx.reply('Список активных клиентов:', { reply_markup: keyboard });
-});
+//   await ctx.reply('Список активных клиентов:', { reply_markup: keyboard });
+// });
 
 bot.callbackQuery('archived_clients', async (ctx) => {
   await ctx.answerCallbackQuery();
@@ -138,39 +140,39 @@ bot.callbackQuery('blocked_clients', async (ctx) => {
 });
 
 // Обработчик для конкретного клиента (callback_query с regex)
-bot.callbackQuery(/client_(.+)/, async (ctx) => {
-  await ctx.answerCallbackQuery();
-  const clientId = ctx.match[1];
-  const clients = loadClients();
-  const client = clients.find(c => c.id === clientId);
+// bot.callbackQuery(/client_(.+)/, async (ctx) => {
+//   await ctx.answerCallbackQuery();
+//   const clientId = ctx.match[1];
+//   const clients = loadClients();
+//   const client = clients.find(c => c.id === clientId);
 
-  if (client) {
-    let message = `*Информация о клиенте ${client.firstName} ${client.lastName}*\n\n` +
-                  `*Категория:* ${client.category === 'buyer' ? 'Покупатель' : 'Продавец'}\n` +
-                  `*Статус:* ${client.status === 'active' ? 'Активный' : client.status === 'archived' ? 'Архивный' : 'Заблокирован'}\n`;
+//   if (client) {
+//     let message = `*Информация о клиенте ${client.firstName} ${client.lastName}*\n\n` +
+//                   `*Категория:* ${client.category === 'buyer' ? 'Покупатель' : 'Продавец'}\n` +
+//                   `*Статус:* ${client.status === 'active' ? 'Активный' : client.status === 'archived' ? 'Архивный' : 'Заблокирован'}\n`;
 
-    if (client.propertyInfo) {
-      message += `\n*Информация по объекту:*\n`;
-      if (client.propertyInfo.type) message += `  Тип: ${client.propertyInfo.type}\n`;
-      if (client.propertyInfo.requirements) message += `  Требования: ${client.propertyInfo.requirements}\n`;
-      if (client.propertyInfo.description) message += `  Описание: ${client.propertyInfo.description}\n`;
-      if (client.propertyInfo.price) message += `  Цена: ${client.propertyInfo.price}\n`;
-    }
+//     if (client.propertyInfo) {
+//       message += `\n*Информация по объекту:*\n`;
+//       if (client.propertyInfo.type) message += `  Тип: ${client.propertyInfo.type}\n`;
+//       if (client.propertyInfo.requirements) message += `  Требования: ${client.propertyInfo.requirements}\n`;
+//       if (client.propertyInfo.description) message += `  Описание: ${client.propertyInfo.description}\n`;
+//       if (client.propertyInfo.price) message += `  Цена: ${client.propertyInfo.price}\n`;
+//     }
 
-    const keyboard = new InlineKeyboard();
-    if (client.username) {
-      keyboard.url(`Перейти в чат с ${client.firstName}`, `https://t.me/${client.username.startsWith('@') ? client.username.substring(1) : client.username}`);
-    }
+//     const keyboard = new InlineKeyboard();
+//     if (client.username) {
+//       keyboard.url(`Перейти в чат с ${client.firstName}`, `https://t.me/${client.username.startsWith('@') ? client.username.substring(1) : client.username}`);
+//     }
 
-    if (keyboard.inline_keyboard.length > 0) {
-      await ctx.reply(message, { parse_mode: 'Markdown', reply_markup: keyboard });
-    } else {
-      await ctx.reply(message, { parse_mode: 'Markdown' });
-    }
-  } else {
-    await ctx.reply('Клиент не найден.');
-  }
-});
+//     if (keyboard.inline_keyboard.length > 0) {
+//       await ctx.reply(message, { parse_mode: 'Markdown', reply_markup: keyboard });
+//     } else {
+//       await ctx.reply(message, { parse_mode: 'Markdown' });
+//     }
+//   } else {
+//     await ctx.reply('Клиент не найден.');
+//   }
+// });
 
 // Команда /demo
 bot.command('demo', async (ctx) => {
@@ -217,6 +219,7 @@ bot.hears(yandexGptRegex, async (ctx, next) => {
   switch (type) {
     case 'client':
       if (businessConnectionId) {
+        setClient(ctx.from as Client);
         await chatHandler(ctx, type);
       }
       break;
@@ -226,6 +229,7 @@ bot.hears(yandexGptRegex, async (ctx, next) => {
       const userId = ctx.from?.id.toString();
       const mode:UserMode = userId?await getMode(userId):'none';
       if (mode === 'demo') {
+        setClient(ctx.from as Client);
         await chatHandler(ctx, type);
         //console.log('demo', JSON.stringify(ctx));
         //await ctx.reply('Режим демонстрации: вы не можете общаться с администратором.');
