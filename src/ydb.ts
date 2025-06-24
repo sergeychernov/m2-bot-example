@@ -7,7 +7,7 @@ import {
   // Ydb, // Может понадобиться для доступа к Ydb.IValue, если не экспортируется иначе
 
 } from 'ydb-sdk';
-import crypto from 'crypto'; // Добавили импорт crypto
+import crypto from 'crypto';
 
 const endpoint = process.env.YDB_ENDPOINT;
 const database = process.env.YDB_DATABASE;
@@ -224,7 +224,7 @@ export async function addPrompt(
         $model: { type: Types.UTF8, value: { textValue: model } },
         $stream: { type: Types.BOOL, value: { boolValue: stream } },
         $temperature: { type: Types.DOUBLE, value: { doubleValue: temperature } },
-        $maxTokens: { type: Types.INT64, value: { int64Value: maxTokens } },
+        $maxTokens: { type: Types.INT64, value: { int64Value: maxTokens } }
       });
       logger.info(`Prompt ${promptId} of type ${promptType} added to 'prompts' table.`);
     });
@@ -286,19 +286,21 @@ export async function closeDriver() {
   }
 }
 
-export async function addBotClientData(userId: string, profile: Record<string, any>, iamToken?: string): Promise<void> {
+export async function addBotClientData(userId: string, profile: Record<string, any>, mode: string = 'none', iamToken?: string): Promise<void> {
   const currentDriver = await getDriver(iamToken);
   try {
     await currentDriver.tableClient.withSession(async (session) => {
       const query = `
         DECLARE $userId AS Utf8;
         DECLARE $profile AS Json;
+        DECLARE $mode AS Utf8;
         UPSERT INTO users (userId, profile, mode)
-        VALUES ($userId, $profile, 'none');
+        VALUES ($userId, $profile, $mode);
       `;
       await session.executeQuery(query, {
         $userId: { type: Types.UTF8, value: { textValue: userId } },
         $profile: { type: Types.JSON, value: { textValue: JSON.stringify(profile) } },
+        $mode: { type: Types.UTF8, value: { textValue: mode } },
       });
       logger.info(`User data for ${userId} added/updated in 'users' table.`);
     });
@@ -308,7 +310,7 @@ export async function addBotClientData(userId: string, profile: Record<string, a
   }
 }
 
-export async function getBotClientData(userId: string, iamToken?: string): Promise<Record<string, any> | null> {
+export async function getBotClientData(userId: string, iamToken?: string): Promise<{ profile: Record<string, any>, mode: string } | null> {
   const currentDriver = await getDriver(iamToken);
   try {
     return await currentDriver.tableClient.withSession(async (session) => {
@@ -322,8 +324,8 @@ export async function getBotClientData(userId: string, iamToken?: string): Promi
       if (resultSets[0]?.rows && resultSets[0].rows.length > 0) {
         const row = resultSets[0].rows[0];
         const profile = JSON.parse(row.items![0].textValue || '{}');
-        const mode = row.items![1].textValue;
-        return { ...profile, mode };
+        const mode = row.items![1].textValue || 'none';
+        return { profile, mode };
       }
       return null;
     });
@@ -331,6 +333,77 @@ export async function getBotClientData(userId: string, iamToken?: string): Promi
     logger.error('Failed to get user data:', error);
     throw error;
   }
+}
+
+export async function saveQuizState(
+  userId: string,
+  step: number,
+  answers: Record<string, string>,
+  allowExit: boolean
+): Promise<void> {
+  const currentDriver = await getDriver();
+  await currentDriver.tableClient.withSession(async (session) => {
+    const query = `
+      DECLARE $userId AS Utf8;
+      DECLARE $step AS Int32;
+      DECLARE $answers AS Json;
+      DECLARE $allowExit AS Bool;
+      UPSERT INTO quiz_states (userId, step, answers, allowExit)
+      VALUES ($userId, $step, $answers, $allowExit);
+    `;
+    await session.executeQuery(query, {
+      $userId: { type: Types.UTF8, value: { textValue: userId } },
+      $step: { type: Types.INT32, value: { int32Value: step } },
+      $answers: { type: Types.JSON, value: { textValue: JSON.stringify(answers) } },
+      $allowExit: { type: Types.BOOL, value: { boolValue: allowExit } },
+    });
+  });
+}
+
+export async function loadQuizState(
+    userId: string,
+): Promise<{ step: number; answers: Record<string, string>; allowExit: boolean } | null> {
+  const currentDriver = await getDriver();
+  return await currentDriver.tableClient.withSession(async (session) => {
+    const query = `
+      DECLARE $userId AS Utf8;
+      SELECT step, answers, allowExit FROM quiz_states
+      WHERE userId = $userId
+      LIMIT 1;
+    `;
+    const { resultSets } = await session.executeQuery(query, {
+      $userId: { type: Types.UTF8, value: { textValue: userId } },
+    });
+    if (resultSets[0]?.rows && resultSets[0].rows.length > 0) {
+      const row = resultSets[0].rows[0];
+      if (
+          row.items &&
+          typeof row.items[0]?.int32Value === 'number' &&
+          typeof row.items[1]?.textValue === 'string' &&
+          typeof row.items[2]?.boolValue === 'boolean'
+      ) {
+        return {
+          step: row.items[0].int32Value,
+          answers: JSON.parse(row.items[1].textValue),
+          allowExit: row.items[2].boolValue,
+        };
+      }
+    }
+    return null;
+  });
+}
+
+export async function deleteQuizState(userId: string): Promise<void> {
+  const currentDriver = await getDriver();
+  await currentDriver.tableClient.withSession(async (session) => {
+    const query = `
+      DECLARE $userId AS Utf8;
+      DELETE FROM quiz_states WHERE userId = $userId;
+    `;
+    await session.executeQuery(query, {
+      $userId: { type: Types.UTF8, value: { textValue: userId } },
+    });
+  });
 }
 
 export type UserMode = 'demo' | 'quiz' | 'none';
@@ -379,4 +452,42 @@ export async function setMode(userId: string, mode: UserMode, iamToken?: string)
         logger.error(`Failed to set mode for user ${userId}:`, error);
         throw error;
     }
+}
+
+export async function saveQuizConfig(quizConfig: any, iamToken?: string): Promise<void> {
+  const currentDriver = await getDriver(iamToken);
+  const id = crypto.randomUUID();
+  const createdAt = new Date();
+  const timestampMicroseconds = createdAt.getTime() * 1000;
+  await currentDriver.tableClient.withSession(async (session) => {
+    const query = `
+      DECLARE $id AS Utf8;
+      DECLARE $quizConfig AS Json;
+      DECLARE $createdAt AS Timestamp;
+      UPSERT INTO quiz_configs (id, quizConfig, createdAt) VALUES ($id, $quizConfig, $createdAt);
+    `;
+    await session.executeQuery(query, {
+      $id: { type: Types.UTF8, value: { textValue: id } },
+      $quizConfig: { type: Types.JSON, value: { textValue: JSON.stringify(quizConfig) } },
+      $createdAt: { type: Types.TIMESTAMP, value: { uint64Value: timestampMicroseconds } },
+    });
+    logger.info(`Quiz config saved to quiz_configs table with id=${id}`);
+  });
+}
+
+export async function getQuizConfig(iamToken?: string): Promise<any | null> {
+  const currentDriver = await getDriver(iamToken);
+  return await currentDriver.tableClient.withSession(async (session) => {
+    const query = `
+      SELECT quizConfig FROM quiz_configs ORDER BY createdAt DESC LIMIT 1;
+    `;
+    const { resultSets } = await session.executeQuery(query, {});
+    if (resultSets[0]?.rows && resultSets[0].rows.length > 0) {
+      const row = resultSets[0].rows[0];
+      if (row.items && row.items[0]?.textValue) {
+        return JSON.parse(row.items[0].textValue);
+      }
+    }
+    return null;
+  });
 }

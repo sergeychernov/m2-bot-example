@@ -84,7 +84,7 @@ export async function getYandexGPTResponse(
             console.warn(`No user data found for userId: ${userId}. Proceeding without it.`);
         }
 
-        const systemPromptText = formatSystemPrompt(gptSettings.promptText, userData || {});
+        const systemPromptText = formatSystemPrompt(gptSettings.promptText, userData?.profile || {});
 
         const url = 'https://llm.api.cloud.yandex.net/foundationModels/v1/completion';
 

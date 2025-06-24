@@ -1,16 +1,14 @@
 import { Bot,  InlineKeyboard } from 'grammy';
 import fs from 'fs'; // fs больше не нужен здесь для system_prompt.md
 import path from 'path'; // path больше не нужен здесь для system_prompt.md
-import { getYandexGPTResponse, setIamToken } from './gpt'; 
-import { 
-    addChatMessage, 
+import { setIamToken } from './gpt';
+import {
     ChatMessageType,
-    getDriver, 
-    getLastChatMessages,
+    getDriver,
     getMode,
     setMode,
     UserMode,
-} from './ydb'; 
+} from './ydb';
 
 import { iam } from './iam';
 import { Driver } from 'ydb-sdk';
@@ -19,8 +17,8 @@ import { setupDatabase } from './setup-db';
 import { renderSettingsPage } from './settings.fe';
 import { handleSettingsPost } from './settings.be'; // <<< Добавлен этот импорт
 import { debugClientCommands } from './debug-client-commands';
-import { createQuiz } from './quiz';
 import { chatHandler } from './chat-handler';
+import { initializeQuiz } from './quiz-handler';
 
 const botToken = process.env.BOT_TOKEN;
 if (!botToken) {
@@ -84,27 +82,20 @@ const loadClients = (): Client[] => {
   }
 };
 
-const quizConfig = JSON.parse(
-    fs.readFileSync(path.join(__dirname, 'quiz.json'), 'utf-8')
-);
-const quiz = createQuiz(quizConfig, bot);
-
-// Обработчик команды /start
-bot.command('start', (ctx) => quiz.startQuiz(ctx));
+// Команды /quiz и /start
+initializeQuiz(bot);
 
 // Команда /help
 bot.command('help', async (ctx) => {
-  await ctx.reply(
-    'Доступные команды:\n' +
-    '/start - Начать работу с ботом\n' +
-    '/help - Показать это сообщение\n' +
-    '/clients - Показать список всех клиентов\n' +
-    '/quiz - Пройти квиз\n' +
-    '/demo - Демонстрация возможностей'
-  );
+    await ctx.reply(
+        'Доступные команды:\n' +
+        '/start - Начать работу с ботом\n' +
+        '/help - Показать это сообщение\n' +
+        '/clients - Показать список всех клиентов\n' +
+        '/quiz - Пройти квиз\n' +
+        '/demo - Демонстрация возможностей'
+    );
 });
-
-
 
 // Команда /clients
 bot.command('clients', async (ctx) => {
@@ -209,7 +200,7 @@ debugClientCommands(bot);
 // Новый обработчик для сообщений, начинающихся с 'y:'
 const yandexGptRegex = /^(.*)/i;
 // от бота не перехватывает
-bot.hears(yandexGptRegex, async (ctx) => {
+bot.hears(yandexGptRegex, async (ctx, next) => {
     console.log('Received Yandex GPT command:', JSON.stringify(ctx));
   const businessConnectionId = ctx.businessConnectionId || ctx.message?.business_connection_id;
   let type: ChatMessageType;
@@ -240,24 +231,14 @@ bot.hears(yandexGptRegex, async (ctx) => {
         //await ctx.reply('Режим демонстрации: вы не можете общаться с администратором.');
       }
       break;
-    
+
   }
-  if (businessConnectionId && type === 'client') {
-    
-    } else {
-      }
+
+  await next();
 });
 
 let dbDriver: Driver | undefined;
 // let initialPromptAdded = false; // Удаляем этот флаг
-
-
-
-// Команда /quiz
-// bot.command('quiz', (ctx) => quiz.startQuiz(ctx, true));
-// bot.on('message:text', quiz.handleQuizText);
-// bot.callbackQuery(/simple_quiz_(.+)/, quiz.handleQuizButton);
-// bot.callbackQuery('exit_quiz', quiz.handleQuizExit);
 
 // Обновленный обработчик Cloud Function
 export async function handler(event: any, context?: any) {

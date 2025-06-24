@@ -120,6 +120,59 @@ async function ensureUsersTableExists(iamToken?: string): Promise<void> {
 	}
 }
 
+async function ensureQuizStatesTableExists(iamToken?: string): Promise<void> {
+	const currentDriver = await getDriver(iamToken);
+	try {
+		await currentDriver.tableClient.withSession(async (session) => {
+			try {
+				await session.describeTable('quiz_states');
+				logger.info("Table 'quiz_states' already exists.");
+			} catch (error: any) {
+				logger.info("Table 'quiz_states' not found, creating...");
+				await session.createTable(
+					'quiz_states',
+					new TableDescription()
+						.withColumn(new Column('userId', Types.UTF8))
+						.withColumn(new Column('step', Types.INT32))
+						.withColumn(new Column('answers', Types.JSON))
+						.withColumn(new Column('allowExit', Types.BOOL))
+						.withPrimaryKeys('userId')
+				);
+				logger.info("Table 'quiz_states' created successfully.");
+			}
+		});
+	} catch (error) {
+		logger.error('Failed to ensure quiz_states table exists:', error);
+		throw error;
+	}
+}
+
+async function ensureQuizConfigsTableExists(iamToken?: string): Promise<void> {
+	const currentDriver = await getDriver(iamToken);
+	try {
+		await currentDriver.tableClient.withSession(async (session) => {
+			try {
+				await session.describeTable('quiz_configs');
+				logger.info("Table 'quiz_configs' already exists.");
+			} catch (error: any) {
+				logger.info("Table 'quiz_configs' not found, creating...");
+				await session.createTable(
+					'quiz_configs',
+					new TableDescription()
+						.withColumn(new Column('id', Types.UTF8))
+						.withColumn(new Column('quizConfig', Types.JSON))
+						.withColumn(new Column('createdAt', Types.TIMESTAMP))
+						.withPrimaryKeys('id')
+				);
+				logger.info("Table 'quiz_configs' created successfully.");
+			}
+		});
+	} catch (error) {
+		logger.error('Failed to ensure quiz_states table exists:', error);
+		throw error;
+	}
+}
+
 async function ensureMigrationsTableExists(iamToken?: string): Promise<void> {
 	const currentDriver = await getDriver(iamToken);
 	try {
@@ -278,6 +331,8 @@ export async function setupDatabase() {
     await ensureChatsTableExists();
     await ensurePromptsTableExists();
     await ensureUsersTableExists();
+	await ensureQuizStatesTableExists();
+	await ensureQuizConfigsTableExists();
     await ensureMigrationsTableExists();
     await applyMigrations();
     console.log('Database setup completed successfully.');
