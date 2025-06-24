@@ -335,6 +335,91 @@ export async function getBotClientData(userId: string, iamToken?: string): Promi
   }
 }
 
+export interface Client {
+  id: number;
+  first_name?: string;
+  last_name?: string;
+  username?: string;
+  language_code?: string;
+}
+
+const clientCache = new Map<number, Client>();
+
+export async function getClient(id: number, iamToken?: string): Promise<Client | null> {
+  if (clientCache.has(id)) {
+    logger.info(`Returning client ${id} from cache.`);
+    return clientCache.get(id)!;
+  }
+
+  logger.info(`Client ${id} not in cache, fetching from DB.`);
+  const currentDriver = await getDriver(iamToken);
+  try {
+    return await currentDriver.tableClient.withSession(async (session) => {
+      const query = `
+        DECLARE $id AS Int64;
+        SELECT id, first_name, last_name, username, language_code FROM clients WHERE id = $id LIMIT 1;
+      `;
+      const { resultSets } = await session.executeQuery(query, {
+        $id: { type: Types.INT64, value: { int64Value: id } },
+      });
+      if (resultSets[0]?.rows && resultSets[0].rows.length > 0) {
+        const row = resultSets[0].rows[0];
+        const client: Client = {
+          id: Number(row.items![0].int64Value),
+          first_name: row.items![1].textValue ?? undefined,
+          last_name: row.items![2].textValue ?? undefined,
+          username: row.items![3].textValue ?? undefined,
+          language_code: row.items![4].textValue ?? undefined,
+        };
+        clientCache.set(id, client);
+        logger.info(`Client ${id} fetched from DB and cached.`);
+        return client;
+      }
+      logger.warn(`Client with id ${id} not found in DB.`);
+      return null;
+    });
+  } catch (error) {
+    logger.error('Failed to get client data:', error);
+    throw error;
+  }
+}
+
+export async function setClient(client: Client, iamToken?: string): Promise<void> {
+  const cachedClient = clientCache.get(client.id);
+  if (cachedClient && JSON.stringify(cachedClient) === JSON.stringify(client)) {
+    logger.info(`Client data for ${client.id} is up to date, no changes made.`);
+    return;
+  }
+
+  const currentDriver = await getDriver(iamToken);
+  try {
+    await currentDriver.tableClient.withSession(async (session) => {
+      const query = `
+        DECLARE $id AS Int64;
+        DECLARE $first_name AS Utf8?;
+        DECLARE $last_name AS Utf8?;
+        DECLARE $username AS Utf8?;
+        DECLARE $language_code AS Utf8?;
+        UPSERT INTO clients (id, first_name, last_name, username, language_code)
+        VALUES ($id, $first_name, $last_name, $username, $language_code);
+      `;
+      
+      await session.executeQuery(query, {
+        $id: { type: Types.INT64, value: { int64Value: client.id } },
+        $first_name: { type: Types.optional(Types.UTF8), value: client.first_name ? { textValue: client.first_name } : { nullFlagValue: 0 } },
+        $last_name: { type: Types.optional(Types.UTF8), value: client.last_name ? { textValue: client.last_name } : { nullFlagValue: 0 } },
+        $username: { type: Types.optional(Types.UTF8), value: client.username ? { textValue: client.username } : { nullFlagValue: 0 } },
+        $language_code: { type: Types.optional(Types.UTF8), value: client.language_code ? { textValue: client.language_code } : { nullFlagValue: 0 } },
+      });
+      clientCache.set(client.id, client);
+      logger.info(`Client data for ${client.id} added/updated in 'clients' table.`);
+    });
+  } catch (error) {
+    logger.error('Failed to set client data:', JSON.stringify(error));
+    throw error;
+  }
+}
+
 export async function saveQuizState(
   userId: string,
   step: number,
