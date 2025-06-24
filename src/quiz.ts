@@ -172,12 +172,11 @@ export function createQuiz(quizConfig: QuizConfig) {
     }
     delete quizStates[userId];
     await ctx.answerCallbackQuery();
-    if (userId) {
-      await deleteQuizState(userId);
-    }
     if (exitText) {
+      await setMode(userId, 'none');
       await ctx.reply(exitText);
     }
+    await deleteQuizState(userId);
   }
 
   async function showQuizResult(ctx: Context, answers: Record<string, string>) {
