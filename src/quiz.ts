@@ -1,5 +1,6 @@
 import {Bot, Context, InlineKeyboard} from 'grammy';
 import { addBotClientData, getBotClientData, saveQuizState, loadQuizState, deleteQuizState, setMode, getMode } from './ydb';
+import { formatSystemPrompt } from './gpt';
 
 export type QuizQuestion = {
   id: string;
@@ -70,18 +71,6 @@ export function createQuiz(quizConfig: QuizConfig) {
     await sendQuestion(ctx, quizStates[userId]);
   }
 
-  function generateMultiSelectKeyboard(options: string[], selected: string[]): InlineKeyboard {
-    const keyboard = new InlineKeyboard();
-    for (const option of options) {
-      keyboard.text(
-        `${selected.includes(option) ? "✅" : "  "} ${option}`,
-        `multi_${option}`
-      ).row();
-    }
-    keyboard.text("➡️ Готово", "multi_done");
-    return keyboard;
-  }
-
   async function sendQuestion(ctx: Context, state: { step: number; answers: Record<string, any>; allowExit: boolean }) {
     const currentQ = questions[state.step];
     if (!currentQ) return;
@@ -89,11 +78,18 @@ export function createQuiz(quizConfig: QuizConfig) {
 
     if (currentQ.type === 'buttons') {
       keyboard = new InlineKeyboard();
-      currentQ.options?.forEach((option: string) => keyboard!.text(option, `simple_quiz_${option}`).row());
+      currentQ.options?.forEach((option: string) => keyboard!.text(option, `simple_quiz_${currentQ.id}_${option}`).row());
     }
     if (currentQ.type === 'multi-select') {
       const selected: string[] = Array.isArray(state.answers[currentQ.id]) ? state.answers[currentQ.id] as string[] : [];
-      keyboard = generateMultiSelectKeyboard(currentQ.options || [], selected);
+      keyboard = new InlineKeyboard();
+      for (const option of currentQ.options || []) {
+        keyboard.text(
+          `${selected.includes(option) ? "✅" : "  "} ${option}`,
+          `multi_${currentQ.id}_${option}`
+        ).row();
+      }
+      keyboard.text("➡️ Готово", `multi_done_${currentQ.id}`);
     }
     if (state.allowExit && buttonLabels?.exit) {
       (keyboard ??= new InlineKeyboard()).text(buttonLabels.exit, 'exit_quiz').row();
@@ -157,19 +153,37 @@ export function createQuiz(quizConfig: QuizConfig) {
     if (!state) return;
 
     const currentQ = questions[state.step];
-    if (currentQ.type === 'buttons') {
-      state.answers[currentQ.id] = ctx.match[1];
-      state.step += 1;
-      await saveUserFromState(ctx, state);
-      await saveQuizState(userId, state.step, state.answers, state.allowExit);
+    if (currentQ.type !== 'buttons') {
       await ctx.answerCallbackQuery();
-      if (state.step < questions.length) {
-        await sendQuestion(ctx, state);
-      } else {
-        await showQuizResult(ctx, state.answers);
-        await deleteQuizState(userId);
-        delete quizStates[userId];
-      }
+      return;
+    }
+    const data = ctx.callbackQuery?.data;
+    if (!data) {
+      await ctx.answerCallbackQuery();
+      return;
+    }
+    const match = data.match(/^simple_quiz_(.+?)_(.+)$/);
+    if (!match) {
+      await ctx.answerCallbackQuery();
+      return;
+    }
+    const questionId = match[1];
+    const option = match[2];
+    if (currentQ.id !== questionId) {
+      await ctx.answerCallbackQuery();
+      return;
+    }
+    state.answers[currentQ.id] = option;
+    state.step += 1;
+    await saveUserFromState(ctx, state);
+    await saveQuizState(userId, state.step, state.answers, state.allowExit);
+    await ctx.answerCallbackQuery();
+    if (state.step < questions.length) {
+      await sendQuestion(ctx, state);
+    } else {
+      await showQuizResult(ctx, state.answers);
+      await deleteQuizState(userId);
+      delete quizStates[userId];
     }
   }
 
@@ -197,13 +211,21 @@ export function createQuiz(quizConfig: QuizConfig) {
     if (!state) return;
 
     const currentQ = questions[state.step];
-    if (currentQ.type !== 'multi-select') return;
-
+    if (currentQ.type !== 'multi-select') {
+      await ctx.answerCallbackQuery();
+      return;
+    }
     const data = ctx.callbackQuery.data;
     if (!data) return;
-    let selected: string[] = Array.isArray(state.answers[currentQ.id]) ? state.answers[currentQ.id] as string[] : [];
-
-    if (data === 'multi_done') {
+    const doneMatch = data.match(/^multi_done_(.+)$/);
+    const selectMatch = data.match(/^multi_(.+?)_(.+)$/);
+    if (doneMatch) {
+      const questionId = doneMatch[1];
+      if (currentQ.id !== questionId) {
+        await ctx.answerCallbackQuery();
+        return;
+      }
+      let selected: string[] = Array.isArray(state.answers[currentQ.id]) ? state.answers[currentQ.id] as string[] : [];
       if (selected.length === 0) {
         await ctx.answerCallbackQuery({ text: "Выберите хотя бы один вариант!" });
         return;
@@ -220,10 +242,14 @@ export function createQuiz(quizConfig: QuizConfig) {
         delete quizStates[userId];
       }
       return;
-    }
-
-    if (data.startsWith('multi_')) {
-      const option = data.slice('multi_'.length);
+    } else if (selectMatch) {
+      const questionId = selectMatch[1];
+      const option = selectMatch[2];
+      if (currentQ.id !== questionId) {
+        await ctx.answerCallbackQuery();
+        return;
+      }
+      let selected: string[] = Array.isArray(state.answers[currentQ.id]) ? state.answers[currentQ.id] as string[] : [];
       if (selected.includes(option)) {
         selected = selected.filter(o => o !== option);
       } else {
@@ -234,8 +260,20 @@ export function createQuiz(quizConfig: QuizConfig) {
       await ctx.api.editMessageReplyMarkup(
         ctx.chat.id,
         ctx.callbackQuery.message!.message_id,
-        { reply_markup: generateMultiSelectKeyboard(currentQ.options || [], selected) }
+        { reply_markup: (() => {
+          const keyboard = new InlineKeyboard();
+          for (const option of currentQ.options || []) {
+            keyboard.text(
+              `${selected.includes(option) ? "✅" : "  "} ${option}`,
+              `multi_${currentQ.id}_${option}`
+            ).row();
+          }
+          keyboard.text("➡️ Готово", `multi_done_${currentQ.id}`);
+          return keyboard;
+        })() }
       );
+      await ctx.answerCallbackQuery();
+    } else {
       await ctx.answerCallbackQuery();
     }
   }
@@ -246,16 +284,13 @@ export function createQuiz(quizConfig: QuizConfig) {
       return;
     }
     await setMode(userId, 'none');
-    // временно для тестирования
-    let result = 'Ваши ответы:\n';
+    const profileForDisplay: Record<string, any> = {};
     for (const q of questions) {
-      const val = answers[q.id];
-      if (Array.isArray(val)) {
-        result += `${q.key} — ${val.join(', ')}\n`;
-      } else {
-        result += `${q.key} — ${val || ''}\n`;
+      if (answers[q.id] !== undefined) {
+        profileForDisplay[q.key] = answers[q.id];
       }
     }
+    const result = formatSystemPrompt('{{profile}}', profileForDisplay);
     if (successText) {
       await ctx.reply(successText);
     }

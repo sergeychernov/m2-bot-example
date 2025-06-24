@@ -38,16 +38,21 @@ async function loadGptSettingsFromDb(iamToken?: string): Promise<Prompt | null> 
     }
 }
 
-function formatSystemPrompt(basePrompt: string, userData: Record<string, any>): string {
+export function formatSystemPrompt(basePrompt: string, userData: Record<string, any>): string {
     let prompt = basePrompt;
     for (const key in userData) {
         prompt = prompt.replace(new RegExp(`{{${key}}}`, 'g'), userData[key]);
     }
 
-    // Специальная обработка для {{profile}}
     const profileData = Object.entries(userData)
-        .map(([key, value]) => `- ${key}: ${value}`)
-        .join('\\n');
+        .map(([key, value]) => {
+            if (Array.isArray(value)) {
+                return `- ${key}:\n` + value.map(v => `  • ${v}`).join('\n');
+            } else {
+                return `- ${key}: ${value}`;
+            }
+        })
+        .join('\n');
     prompt = prompt.replace(/{{profile}}/g, profileData);
 
     return prompt;
