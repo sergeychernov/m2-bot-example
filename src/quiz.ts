@@ -1,11 +1,12 @@
 import {Bot, Context, InlineKeyboard} from 'grammy';
 import { addBotClientData, getBotClientData, saveQuizState, loadQuizState, deleteQuizState, setMode, getMode } from './ydb';
+import { formatSystemPrompt } from './gpt';
 
 export type QuizQuestion = {
   id: string;
   key: string;
   question: string;
-  type: 'text' | 'buttons';
+  type: 'text' | 'buttons' | 'multi-select';
   options?: string[];
   required?: boolean;
   imageUrl?: string;
@@ -31,10 +32,10 @@ export type QuizConfig = {
 };
 
 export function createQuiz(quizConfig: QuizConfig) {
-  const quizStates: Record<string, { step: number; answers: Record<string, string>; allowExit: boolean }> = {};
+  const quizStates: Record<string, { step: number; answers: Record<string, any>; allowExit: boolean }> = {};
   const { questions, quizDescription, exitText, successText, buttonLabels } = quizConfig;
 
-  async function saveUserFromState(ctx: Context, state: { answers: Record<string, string> }) {
+  async function saveUserFromState(ctx: Context, state: { answers: Record<string, any> }) {
     if (ctx.from) {
       const userId = ctx.from.id.toString();
       const oldData = await getBotClientData(userId) || { profile: {} };
@@ -61,17 +62,8 @@ export function createQuiz(quizConfig: QuizConfig) {
     if (state) {
       quizStates[userId] = { ...state };
     } else {
-      const userData = await getBotClientData(userId);
-      const oldAnswers: Record<string, string> = {};
-      if (userData) {
-        for (const question of questions) {
-          if (userData.profile && userData.profile[question.key]) {
-            oldAnswers[question.id] = userData.profile[question.key];
-          }
-        }
-      }
-      quizStates[userId] = { step: 0, answers: { ...oldAnswers }, allowExit };
-      await saveQuizState(userId, 0, { ...oldAnswers }, allowExit);
+      quizStates[userId] = { step: 0, answers: {}, allowExit };
+      await saveQuizState(userId, 0, {}, allowExit);
     }
     if (quizDescription) {
       await ctx.reply(quizDescription);
@@ -79,18 +71,31 @@ export function createQuiz(quizConfig: QuizConfig) {
     await sendQuestion(ctx, quizStates[userId]);
   }
 
-  async function sendQuestion(ctx: Context, state: { step: number; answers: Record<string, string>; allowExit: boolean }) {
+  async function sendQuestion(ctx: Context, state: { step: number; answers: Record<string, any>; allowExit: boolean }) {
     const currentQ = questions[state.step];
     if (!currentQ) return;
-    const keyboard = new InlineKeyboard();
+    let keyboard: InlineKeyboard | undefined = undefined;
+
     if (currentQ.type === 'buttons') {
-      currentQ.options?.forEach((option: string) => keyboard.text(option, `simple_quiz_${option}`).row());
+      keyboard = new InlineKeyboard();
+      currentQ.options?.forEach((option: string) => keyboard!.text(option, `simple_quiz_${currentQ.id}_${option}`).row());
+    }
+    if (currentQ.type === 'multi-select') {
+      const selected: string[] = Array.isArray(state.answers[currentQ.id]) ? state.answers[currentQ.id] as string[] : [];
+      keyboard = new InlineKeyboard();
+      for (const option of currentQ.options || []) {
+        keyboard.text(
+          `${selected.includes(option) ? "✅" : "  "} ${option}`,
+          `multi_${currentQ.id}_${option}`
+        ).row();
+      }
+      keyboard.text("➡️ Готово", `multi_done_${currentQ.id}`);
     }
     if (state.allowExit && buttonLabels?.exit) {
-      keyboard.text(buttonLabels.exit, 'exit_quiz').row();
+      (keyboard ??= new InlineKeyboard()).text(buttonLabels.exit, 'exit_quiz').row();
     }
     const messageOptions = {
-      reply_markup: keyboard.inline_keyboard.length > 0 ? keyboard : undefined,
+      reply_markup: keyboard?.inline_keyboard.length ? keyboard : undefined,
       parse_mode: 'HTML' as const
     };
     if (currentQ.imageUrl) {
@@ -132,8 +137,8 @@ export function createQuiz(quizConfig: QuizConfig) {
         await deleteQuizState(userId);
         delete quizStates[userId];
       }
-    } else if (currentQ.type === 'buttons') {
-      await ctx.reply('Пожалуйста, выберите один из предложенных вариантов с помощью кнопок.');
+    } else if (currentQ.type === 'buttons' || currentQ.type === 'multi-select') {
+      await ctx.reply('Пожалуйста, выберите ответ из предложенных вариантов с помощью кнопок.');
     }
   }
 
@@ -148,19 +153,37 @@ export function createQuiz(quizConfig: QuizConfig) {
     if (!state) return;
 
     const currentQ = questions[state.step];
-    if (currentQ.type === 'buttons') {
-      state.answers[currentQ.id] = ctx.match[1];
-      state.step += 1;
-      await saveUserFromState(ctx, state);
-      await saveQuizState(userId, state.step, state.answers, state.allowExit);
+    if (currentQ.type !== 'buttons') {
       await ctx.answerCallbackQuery();
-      if (state.step < questions.length) {
-        await sendQuestion(ctx, state);
-      } else {
-        await showQuizResult(ctx, state.answers);
-        await deleteQuizState(userId);
-        delete quizStates[userId];
-      }
+      return;
+    }
+    const data = ctx.callbackQuery?.data;
+    if (!data) {
+      await ctx.answerCallbackQuery();
+      return;
+    }
+    const match = data.match(/^simple_quiz_(.+?)_(.+)$/);
+    if (!match) {
+      await ctx.answerCallbackQuery();
+      return;
+    }
+    const questionId = match[1];
+    const option = match[2];
+    if (currentQ.id !== questionId) {
+      await ctx.answerCallbackQuery();
+      return;
+    }
+    state.answers[currentQ.id] = option;
+    state.step += 1;
+    await saveUserFromState(ctx, state);
+    await saveQuizState(userId, state.step, state.answers, state.allowExit);
+    await ctx.answerCallbackQuery();
+    if (state.step < questions.length) {
+      await sendQuestion(ctx, state);
+    } else {
+      await showQuizResult(ctx, state.answers);
+      await deleteQuizState(userId);
+      delete quizStates[userId];
     }
   }
 
@@ -179,17 +202,95 @@ export function createQuiz(quizConfig: QuizConfig) {
     await deleteQuizState(userId);
   }
 
-  async function showQuizResult(ctx: Context, answers: Record<string, string>) {
+  async function handleMultiSelect(ctx: Context) {
+    if (!ctx.chat || !ctx.callbackQuery) return;
+    const userId = ctx.from?.id.toString();
+    if (!userId) return;
+
+    let state = await ensureQuizState(ctx, quizStates, loadQuizState);
+    if (!state) return;
+
+    const currentQ = questions[state.step];
+    if (currentQ.type !== 'multi-select') {
+      await ctx.answerCallbackQuery();
+      return;
+    }
+    const data = ctx.callbackQuery.data;
+    if (!data) return;
+    const doneMatch = data.match(/^multi_done_(.+)$/);
+    const selectMatch = data.match(/^multi_(.+?)_(.+)$/);
+    if (doneMatch) {
+      const questionId = doneMatch[1];
+      if (currentQ.id !== questionId) {
+        await ctx.answerCallbackQuery();
+        return;
+      }
+      let selected: string[] = Array.isArray(state.answers[currentQ.id]) ? state.answers[currentQ.id] as string[] : [];
+      if (selected.length === 0) {
+        await ctx.answerCallbackQuery({ text: "Выберите хотя бы один вариант!" });
+        return;
+      }
+      state.step += 1;
+      await saveUserFromState(ctx, state);
+      await saveQuizState(userId, state.step, state.answers, state.allowExit);
+      await ctx.answerCallbackQuery();
+      if (state.step < questions.length) {
+        await sendQuestion(ctx, state);
+      } else {
+        await showQuizResult(ctx, state.answers);
+        await deleteQuizState(userId);
+        delete quizStates[userId];
+      }
+      return;
+    } else if (selectMatch) {
+      const questionId = selectMatch[1];
+      const option = selectMatch[2];
+      if (currentQ.id !== questionId) {
+        await ctx.answerCallbackQuery();
+        return;
+      }
+      let selected: string[] = Array.isArray(state.answers[currentQ.id]) ? state.answers[currentQ.id] as string[] : [];
+      if (selected.includes(option)) {
+        selected = selected.filter(o => o !== option);
+      } else {
+        selected.push(option);
+      }
+      state.answers[currentQ.id] = [...selected];
+      await saveQuizState(userId, state.step, state.answers, state.allowExit);
+      await ctx.api.editMessageReplyMarkup(
+        ctx.chat.id,
+        ctx.callbackQuery.message!.message_id,
+        { reply_markup: (() => {
+          const keyboard = new InlineKeyboard();
+          for (const option of currentQ.options || []) {
+            keyboard.text(
+              `${selected.includes(option) ? "✅" : "  "} ${option}`,
+              `multi_${currentQ.id}_${option}`
+            ).row();
+          }
+          keyboard.text("➡️ Готово", `multi_done_${currentQ.id}`);
+          return keyboard;
+        })() }
+      );
+      await ctx.answerCallbackQuery();
+    } else {
+      await ctx.answerCallbackQuery();
+    }
+  }
+
+  async function showQuizResult(ctx: Context, answers: Record<string, any>) {
     const userId = ctx.from?.id?.toString();
     if (!userId) {
       return;
     }
     await setMode(userId, 'none');
-    // временно для тестирования
-    let result = 'Ваши ответы:\n';
+    const profileForDisplay: Record<string, any> = {};
     for (const q of questions) {
-      result += `${q.key} — ${answers[q.id] || ''}\n`;
+      if (answers[q.id] !== undefined) {
+        profileForDisplay[q.key] = answers[q.id];
+      }
     }
+    const result = formatSystemPrompt('{{profile}}', profileForDisplay);
     if (successText) {
       await ctx.reply(successText);
     }
@@ -201,6 +302,7 @@ export function createQuiz(quizConfig: QuizConfig) {
     handleQuizText,
     handleQuizButton,
     handleQuizExit,
+    handleMultiSelect,
   };
 }
 
@@ -301,9 +403,9 @@ function validateAnswer(answer: string, validation?: QuizQuestion['validation'])
 // чтобы продолжать квиз после паузы
 async function ensureQuizState(
     ctx: Context,
-    quizStates: Record<string, { step: number; answers: Record<string, string>; allowExit: boolean }>,
-    loadQuizState: (userId: string) => Promise<{ step: number; answers: Record<string, string>; allowExit: boolean } | null>
-): Promise<{ step: number; answers: Record<string, string>; allowExit: boolean } | null> {
+    quizStates: Record<string, { step: number; answers: Record<string, any>; allowExit: boolean }>,
+    loadQuizState: (userId: string) => Promise<{ step: number; answers: Record<string, any>; allowExit: boolean } | null>
+): Promise<{ step: number; answers: Record<string, any>; allowExit: boolean } | null> {
   const userId = ctx.from?.id?.toString();
   if (!userId) return null;
 

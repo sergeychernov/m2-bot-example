@@ -338,7 +338,7 @@ export async function getBotClientData(userId: string, iamToken?: string): Promi
 export async function saveQuizState(
   userId: string,
   step: number,
-  answers: Record<string, string>,
+  answers: Record<string, any>,
   allowExit: boolean
 ): Promise<void> {
   const currentDriver = await getDriver();
@@ -362,7 +362,7 @@ export async function saveQuizState(
 
 export async function loadQuizState(
     userId: string,
-): Promise<{ step: number; answers: Record<string, string>; allowExit: boolean } | null> {
+): Promise<{ step: number; answers: Record<string, any>; allowExit: boolean } | null> {
   const currentDriver = await getDriver();
   return await currentDriver.tableClient.withSession(async (session) => {
     const query = `
