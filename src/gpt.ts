@@ -47,7 +47,7 @@ export function formatSystemPrompt(basePrompt: string, userData: Record<string, 
     const profileData = Object.entries(userData)
         .map(([key, value]) => {
             if (Array.isArray(value)) {
-                return `- ${key}:\n` + value.map(v => `  • ${v}`).join('\n');
+                return `- ${key}: ${value.join(', ')}`;
             } else {
                 return `- ${key}: ${value}`;
             }
