@@ -1,6 +1,5 @@
-import { Bot,  InlineKeyboard } from 'grammy';
-import fs from 'fs'; // fs больше не нужен здесь для system_prompt.md
-import path from 'path'; // path больше не нужен здесь для system_prompt.md
+import { Bot } from 'grammy';
+import { initializeClientsCommand } from './clients';
 import { setIamToken } from './gpt';
 import {
     ChatMessageType,
@@ -14,7 +13,6 @@ import {
 
 import { iam } from './iam';
 import { Driver } from 'ydb-sdk';
-import { imitateTyping } from './telegram-utils';
 import { setupDatabase } from './setup-db';
 import { renderSettingsPage } from './settings.fe';
 import { handleSettingsPost } from './settings.be'; // <<< Добавлен этот импорт
@@ -99,80 +97,8 @@ bot.command('help', async (ctx) => {
     );
 });
 
-// Команда /clients
-bot.command('clients', async (ctx) => {
-  const keyboard = new InlineKeyboard()
-    .text('Активные клиенты', 'active_clients').row()
-    .text('Архивные клиенты', 'archived_clients').row()
-    .text('Заблокированные клиенты', 'blocked_clients');
-  await ctx.reply('Выберите категорию клиентов:', { reply_markup: keyboard });
-});
 
-// Обработчики для действий с клиентами (callback_query)
-// bot.callbackQuery('active_clients', async (ctx) => {
-//   await ctx.answerCallbackQuery();
-//   const clients = loadClients();
-//   const activeClients = clients.filter(client => client.status === 'active');
-
-//   if (activeClients.length === 0) {
-//     await ctx.reply('Активных клиентов нет.');
-//     return;
-//   }
-
-//   const keyboard = new InlineKeyboard();
-//   activeClients.forEach(client => {
-//     keyboard.text(`${client.firstName} ${client.lastName}`, `client_${client.id}`).row();
-//   });
-
-//   await ctx.reply('Список активных клиентов:', { reply_markup: keyboard });
-// });
-
-bot.callbackQuery('archived_clients', async (ctx) => {
-  await ctx.answerCallbackQuery();
-  await ctx.reply('Список архивных клиентов:');
-  // TODO: Добавить логику получения списка архивных клиентов
-});
-
-bot.callbackQuery('blocked_clients', async (ctx) => {
-  await ctx.answerCallbackQuery();
-  await ctx.reply('Список заблокированных клиентов:');
-  // TODO: Добавить логику получения списка заблокированных клиентов
-});
-
-// Обработчик для конкретного клиента (callback_query с regex)
-// bot.callbackQuery(/client_(.+)/, async (ctx) => {
-//   await ctx.answerCallbackQuery();
-//   const clientId = ctx.match[1];
-//   const clients = loadClients();
-//   const client = clients.find(c => c.id === clientId);
-
-//   if (client) {
-//     let message = `*Информация о клиенте ${client.firstName} ${client.lastName}*\n\n` +
-//                   `*Категория:* ${client.category === 'buyer' ? 'Покупатель' : 'Продавец'}\n` +
-//                   `*Статус:* ${client.status === 'active' ? 'Активный' : client.status === 'archived' ? 'Архивный' : 'Заблокирован'}\n`;
-
-//     if (client.propertyInfo) {
-//       message += `\n*Информация по объекту:*\n`;
-//       if (client.propertyInfo.type) message += `  Тип: ${client.propertyInfo.type}\n`;
-//       if (client.propertyInfo.requirements) message += `  Требования: ${client.propertyInfo.requirements}\n`;
-//       if (client.propertyInfo.description) message += `  Описание: ${client.propertyInfo.description}\n`;
-//       if (client.propertyInfo.price) message += `  Цена: ${client.propertyInfo.price}\n`;
-//     }
-
-//     const keyboard = new InlineKeyboard();
-//     if (client.username) {
-//       keyboard.url(`Перейти в чат с ${client.firstName}`, `https://t.me/${client.username.startsWith('@') ? client.username.substring(1) : client.username}`);
-//     }
-
-//     if (keyboard.inline_keyboard.length > 0) {
-//       await ctx.reply(message, { parse_mode: 'Markdown', reply_markup: keyboard });
-//     } else {
-//       await ctx.reply(message, { parse_mode: 'Markdown' });
-//     }
-//   } else {
-//     await ctx.reply('Клиент не найден.');
-//   }
-// });
+initializeClientsCommand(bot);
 
 // Команда /demo
 bot.command('demo', async (ctx) => {
@@ -274,9 +200,6 @@ export async function handler(event: any, context?: any) {
         if (!botInitialized) {
             await initializeBot();
         }
-        
-
-        
         
         let updateString = event.body;
         if (typeof event.body !== 'string') {
