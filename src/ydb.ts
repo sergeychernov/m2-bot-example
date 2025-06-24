@@ -149,13 +149,13 @@ export async function clearChatMessages(chatId: number): Promise<void> {
 
     const query = `
         PRAGMA TablePathPrefix("${process.env.YDB_DATABASE}");
-        DECLARE $chatId AS Utf8;
+        DECLARE $chatId AS Int64;
 
         DELETE FROM ${tableName}
         WHERE chatId = $chatId;
     `;
 
-    logger.info(`Executing query: ${query} for chatId: ${chatId}`);
+    logger.info(`Executing query: ${JSON.stringify(query)} for chatId: ${chatId}`);
 
     try {
         await driver.tableClient.withSession(async (session) => {
@@ -166,7 +166,7 @@ export async function clearChatMessages(chatId: number): Promise<void> {
         });
         logger.info(`Successfully cleared messages for chatId: ${chatId}`);
     } catch (error) {
-        logger.error(`Error clearing messages for chatId: ${chatId}`, error);
+        logger.error(`Error clearing messages for chatId: ${chatId}`, JSON.stringify(error));
         throw error;
     }
 }

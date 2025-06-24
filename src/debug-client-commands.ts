@@ -48,7 +48,7 @@ export async function debugClientCommands(bot: Bot) {
 	  }
 		
 	} catch (error) {
-		console.error(`Error processing clear_chat:`, error);
+		console.error(`Error processing clear_chat:`, JSON.stringify(error));
 		await ctx.reply(`Произошла ошибка при удалении сообщений для чата ${currentChatId}.`);
 	}
   }
