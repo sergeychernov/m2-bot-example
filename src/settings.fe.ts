@@ -1,24 +1,98 @@
 import { getLatestPromptByType, Prompt, getQuizConfig } from './ydb';
-import quizSchema from './quiz-schema.json';
 
-export async function renderSettingsPage(): Promise<any> {
-  const currentPrompt = await getLatestPromptByType('base') as Prompt;
-  const quizConfig = await getQuizConfig() || {};
+export async function renderSettingsPage(event: any): Promise<any> {
+  const queryParams = event.queryStringParameters || {};
+  const view = queryParams.view || 'base'; // 'base', 'summary', or 'quiz'
+  const baseUrl = event.url.split('?')[0];
 
-  // Default values if no prompt is found (e.g., first run before setup-db adds one)
-  const promptText = currentPrompt?.promptText || '';
-  const model = currentPrompt?.model || '/yandexgpt-lite/latest';
-  const stream = currentPrompt?.stream || false;
-  const temperature = currentPrompt?.temperature || 0.6;
-  const maxTokens = currentPrompt?.maxTokens || 20000;
-  
+  let formContent = '';
+  let pageTitle = 'Настройки';
+
+  if (view === 'base' || view === 'summary') {
+    const promptType = view;
+    pageTitle = `Настройки промпта: ${promptType}`;
+    const currentPrompt = await getLatestPromptByType(promptType) as Prompt;
+
+    // Default values
+    const promptText = currentPrompt?.promptText || '';
+    const model = currentPrompt?.model || '/yandexgpt-lite/latest';
+    const stream = currentPrompt?.stream || false;
+    const temperature = currentPrompt?.temperature || 0.6;
+    const maxTokens = currentPrompt?.maxTokens || 20000;
+
+    formContent = `
+      <form method="POST" style="flex-grow: 1; display: flex; flex-direction: column; padding: 20px; box-sizing: border-box;">
+        <input type="hidden" name="formType" value="${promptType}">
+        <div class="form-columns-container">
+          <div class="form-column-left">
+            <div class="settings-section" style="flex-grow: 1; display: flex; flex-direction: column;">
+              <h3>🤖 Промпт для GPT (${promptType})</h3>
+              <div class="prompt-info">
+                <strong>Подсказка:</strong> Используйте {{profile}} для вставки профиля пользователя, {{имя_поля}} для вставки данных из профиля.
+              </div>
+              <div class="form-group" style="flex-grow: 1; display: flex; flex-direction: column;">
+                <label for="promptText" style="flex-shrink: 0;">Текст системного промпта:</label>
+                <textarea id="promptText" name="promptText" placeholder="Вставьте сюда текст системного промпта для GPT..." style="flex-grow: 1;">${promptText}</textarea>
+              </div>
+            </div>
+          </div>
+          <div class="form-column-right">
+            <div class="settings-section">
+              <h3>⚙️ Настройки модели</h3>
+              <div class="form-group-row">
+                <div class="form-group">
+                  <label for="model">Модель:</label>
+                  <input type="text" id="model" name="model" value="${model}">
+                </div>
+                <div class="form-group">
+                  <label for="temperature">Temperature:</label>
+                  <input type="number" id="temperature" name="temperature" value="${temperature}" step="0.1" min="0" max="2">
+                </div>
+              </div>
+              <div class="form-group-row">
+                <div class="form-group">
+                  <label for="maxTokens">Max Tokens:</label>
+                  <input type="number" id="maxTokens" name="maxTokens" value="${maxTokens}" min="1" max="20000">
+                </div>
+                <div class="form-group">
+                  <label for="stream">
+                    <input type="checkbox" id="stream" name="stream" ${stream ? 'checked' : ''}>
+                    Stream (потоковая передача)
+                  </label>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <button type="submit">💾 Сохранить настройки промпта</button>
+      </form>
+    `;
+  } else if (view === 'quiz') {
+    pageTitle = 'Настройки квиза';
+    const quizConfig = await getQuizConfig() || {};
+    formContent = `
+      <form method="POST" style="flex-grow: 1; display: flex; flex-direction: column; padding: 20px; box-sizing: border-box;">
+        <input type="hidden" name="formType" value="quiz">
+        <div class="settings-section" style="height: 100%; display: flex; flex-direction: column;">
+          <h3>🎯 Конфигурация квиза</h3>
+          <div class="form-group" style="flex-grow: 1; display: flex; flex-direction: column;">
+            <label for="quizConfig">JSON конфигурация:</label>
+            <textarea id="quizConfig" name="quizConfig" oninput="validateQuizConfig()" style="flex-grow: 1;">${JSON.stringify(quizConfig, null, 2)}</textarea>
+            <div id="validationStatus"></div>
+          </div>
+        </div>
+        <button type="submit">💾 Сохранить конфигурацию квиза</button>
+      </form>
+    `;
+  }
+
   const body = `
       <!DOCTYPE html>
       <html lang="ru" style="height: 100%; margin: 0; padding: 0;">
       <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Настройки GPT и Квиза</title>
+        <title>${pageTitle}</title>
         <style>
           html, body {
             height: 100vh;
@@ -128,36 +202,16 @@ export async function renderSettingsPage(): Promise<any> {
             font-size: 14px;
             line-height: 1.4;
           }
-          #jsoneditor {
-            height: 400px;
-            border: 1px solid #ddd;
+          .prompt-info {
+            background: #e7f3ff;
+            border: 1px solid #b3d9ff;
             border-radius: 4px;
-          }
-          .json-error {
-            color: #dc3545;
-            font-size: 12px;
-            margin-top: 5px;
-          }
-          .json-valid {
-            color: #28a745;
-            font-size: 12px;
-            margin-top: 5px;
-          }
-          .validation-status {
-            margin-top: 10px;
             padding: 10px;
-            border-radius: 4px;
+            margin-bottom: 15px;
             font-size: 14px;
           }
-          .validation-error {
-            background: #f8d7da;
-            border: 1px solid #f5c6cb;
-            color: #721c24;
-          }
-          .validation-success {
-            background: #d4edda;
-            border: 1px solid #c3e6cb;
-            color: #155724;
+          .prompt-info strong {
+            color: #0056b3;
           }
           button[type="submit"] {
             background: #007bff;
@@ -172,119 +226,29 @@ export async function renderSettingsPage(): Promise<any> {
           button[type="submit"]:hover {
             background: #0056b3;
           }
-          .prompt-info {
-            background: #e7f3ff;
-            border: 1px solid #b3d9ff;
-            border-radius: 4px;
-            padding: 10px;
-            margin-bottom: 15px;
-            font-size: 14px;
-          }
-          .prompt-info strong {
-            color: #0056b3;
-          }
-
-          /* Media query for mobile devices */
-          @media (max-width: 768px) {
-            .form-columns-container {
-              flex-direction: column;
-            }
-            .form-column-left,
-            .form-column-right {
-              flex-basis: auto;
-              min-width: 0;
-              max-width: 100%;
-            }
-            .form-group-row {
-              flex-direction: column;
-              gap: 10px;
-            }
-            textarea {
-              min-height: 150px;
-            }
-            .settings-section {
-              margin-bottom: 15px;
-            }
-          }
-          
-          /* Улучшения для больших экранов */
-          @media (min-width: 1200px) {
-            .form-columns-container {
-              gap: 30px;
-            }
-            .settings-section {
-              padding: 20px;
-            }
-            textarea {
-              min-height: 250px;
-            }
-          }
+          .tabs { display: flex; gap: 5px; margin-bottom: 20px; border-bottom: 1px solid #ddd; padding-bottom: 10px; }
+          .tab-link { padding: 10px 15px; text-decoration: none; color: #007bff; border: 1px solid transparent; border-bottom: none; border-radius: 5px 5px 0 0; }
+          .tab-link.active { color: #333; background: #f9f9f9; border-color: #ddd; border-bottom-color: #f9f9f9; font-weight: bold; }
+          .header-container { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 20px; }
         </style>
       </head>
       <body style="height: 100%; margin: 0; padding: 0; display: flex; flex-direction: column;">
-        <form method="POST" style="flex-grow: 1; display: flex; flex-direction: column; padding: 20px; box-sizing: border-box;" onsubmit="validateBeforeSubmit(event)">
-          <h1>Настройки GPT Промпта и Квиза</h1>
-          
-          <div class="form-columns-container"> 
-            <div class="form-column-left"> 
-              <div class="settings-section">
-                <h3>⚙️ Настройки модели</h3>
-                <div class="form-group-row">
-                  <div class="form-group">
-                    <label for="model">Модель:</label>
-                    <input type="text" id="model" name="model" value="${model}">
-                  </div>
-                  <div class="form-group">
-                    <label for="temperature">Temperature:</label>
-                    <input type="number" id="temperature" name="temperature" value="${temperature}" step="0.1" min="0" max="2">
-                  </div>
-                </div>
-                <div class="form-group-row">
-                  <div class="form-group">
-                    <label for="maxTokens">Max Tokens:</label>
-                    <input type="number" id="maxTokens" name="maxTokens" value="${maxTokens}" min="1" max="20000">
-                  </div>
-                  <div class="form-group">
-                    <label for="stream">
-                      <input type="checkbox" id="stream" name="stream" ${stream ? 'checked' : ''}>
-                      Stream (потоковая передача)
-                    </label>
-                  </div>
-                </div>
-              </div>
-
-              <div class="settings-section">
-                <h3>🤖 Промпт для GPT</h3>
-                <div class="prompt-info">
-                  <strong>Подсказка:</strong> Используйте {{profile}} для вставки профиля пользователя, {{имя_поля}} для вставки данных из профиля.
-                </div>
-                <div class="form-group">
-                  <label for="promptText">Текст системного промпта:</label>
-                  <textarea id="promptText" name="promptText" placeholder="Вставьте сюда текст системного промпта для GPT...">${promptText}</textarea>
-                </div>
-              </div>
+        <div class="header-container">
+            <h1>Настройки</h1>
+            <div class="tabs">
+                <a href="${baseUrl}?view=quiz" class="tab-link ${view === 'quiz' ? 'active' : ''}">🎯 Квиз</a>
+                <a href="${baseUrl}?view=base" class="tab-link ${view === 'base' ? 'active' : ''}">🤖 Основной промпт</a>
+                <a href="${baseUrl}?view=summary" class="tab-link ${view === 'summary' ? 'active' : ''}">📝 Промпт для саммари</a>
             </div>
-            
-            <div class="form-column-right"> 
-              <div class="settings-section">
-                <h3>🎯 Конфигурация квиза</h3>
-                <div class="form-group">
-                  <label for="quizConfig">JSON конфигурация:</label>
-                  <textarea id="quizConfig" name="quizConfig" onchange="validateQuizConfig()" onkeyup="validateQuizConfig()">${JSON.stringify(quizConfig, null, 2)}</textarea>
-                  <div id="validationStatus"></div>
-                </div>
-              </div>
-            </div>
-          </div>
-          
-          <button type="submit" id="submitBtn">💾 Сохранить все настройки</button>
-        </form>
+        </div>
+        ${formContent}
       </body>
       </html>
     `;
+
   return {
 	statusCode: 200,
 	headers: { 'Content-Type': 'text/html; charset=utf-8' },
-	body, 
+	body,
   };
 }

@@ -256,7 +256,7 @@ export async function handler(event: any, context?: any) {
       return { statusCode: 200, body: 'DB initialized' };
     }
     if (event.httpMethod === 'GET') {//редактор глобальных настроек
-      return await renderSettingsPage();
+      return await renderSettingsPage(event);
     }
     if (!event.body) {
       console.error('Event body is missing');
