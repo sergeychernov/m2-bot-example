@@ -301,5 +301,37 @@ export const migrations: Migration[] = [
                 }
             }
         },
+    },
+    {
+        version: 10,
+        name: 'AddAnsweredColumnToChatsTable',
+        async up(driver: Driver, logger: Logger) {
+            logger.info(`Applying migration: AddAnsweredColumnToChatsTable`);
+            try {
+                await driver.queryClient.do({
+                    fn: async (session: QuerySession) => { 
+                        const query = `
+                            ALTER TABLE chats
+                            ADD COLUMN answered Bool DEFAULT true;
+                        `;
+                        logger.info('Executing query:\n' + query);
+                        await session.execute({ text: query });
+                        logger.info('Migration AddAnsweredColumnToChatsTable applied successfully');
+                    }
+                });
+            } catch (error) {
+                if (error instanceof Error) {
+                    if (error.message.includes('already exists') || error.message.includes('Cannot add column to table')) {
+                        logger.warn(`Could not add column answered, it might already exist or there's another schema issue: ${error.message}`);
+                    } else {
+                        logger.error('Failed to apply migration AddAnsweredColumnToChatsTable:', error);
+                        throw error;
+                    }
+                } else {
+                    logger.error('Failed to apply migration AddAnsweredColumnToChatsTable with a non-Error object:', error);
+                    throw error;
+                }
+            }
+        },
     }
 ];

@@ -65,14 +65,18 @@ export async function addChatMessage(
         DECLARE $message AS Utf8;
         DECLARE $type AS Utf8;
         DECLARE $timestamp AS Timestamp;
+        DECLARE $answered AS Bool;
 
-        UPSERT INTO chats (chatId, messageId, userId, message, type, timestamp)
-        VALUES ($chatId, $messageId, $userId, $message, $type, $timestamp);
+        UPSERT INTO chats (chatId, messageId, userId, message, type, timestamp, answered)
+        VALUES ($chatId, $messageId, $userId, $message, $type, $timestamp, $answered);
       `;
 
       const now = new Date();
       // Преобразуем миллисекунды в микросекунды. YDB ожидает микросекунды для Timestamp.
       const timestampMicroseconds = now.getTime() * 1000;
+      
+      // Определяем значение answered: false для сообщений клиентов и админов, true для остальных
+      const answered = (type === 'client' || type === 'admin') ? false : true;
 
       await session.executeQuery(query, {
         $chatId: { type: Types.INT64, value: { int64Value: chatId } },
@@ -80,9 +84,10 @@ export async function addChatMessage(
         $userId: { type: Types.INT64, value: { int64Value: userId } },
         $message: { type: Types.UTF8, value: { textValue: message } },
         $type: { type: Types.UTF8, value: { textValue: type } },
-        $timestamp: { type: Types.TIMESTAMP, value: { uint64Value: timestampMicroseconds } }, 
+        $timestamp: { type: Types.TIMESTAMP, value: { uint64Value: timestampMicroseconds } },
+        $answered: { type: Types.BOOL, value: { boolValue: answered } },
       });
-      logger.info(`Message ${messageId} for chat ${chatId} added to 'chats' table.`);
+      logger.info(`Message ${messageId} for chat ${chatId} added to 'chats' table with answered=${answered}.`);
     });
   } catch (error) {
     logger.error('Failed to add chat message:', JSON.stringify(error));
@@ -97,6 +102,7 @@ export interface ChatMessage {
   message: string;
   type: ChatMessageType;
   timestamp: Date;
+  answered: boolean;
 }
 
 export async function getLastChatMessages(chatId: number, userId: number, limit: number, iamToken?: string): Promise<ChatMessage[]> {
@@ -107,7 +113,7 @@ export async function getLastChatMessages(chatId: number, userId: number, limit:
         DECLARE $chatId AS Int64;
         DECLARE $userId AS Int64;
 
-        SELECT chatId, messageId, userId, message, type, timestamp
+        SELECT chatId, messageId, userId, message, type, timestamp, answered
         FROM chats
         WHERE chatId = $chatId AND userId = $userId
         ORDER BY timestamp DESC
@@ -128,14 +134,15 @@ export async function getLastChatMessages(chatId: number, userId: number, limit:
               messageId: row.items[1].textValue || '',
               userId: Number(row.items[2].int64Value),
               message: row.items[3].textValue || '',
-              type: (row.items[4].textValue || 'client') as ChatMessageType, // Приведение типа, возможно, потребуется более строгая проверка
-              timestamp: new Date(Number(row.items[5].uint64Value) / 1000), 
+              type: (row.items[4].textValue || 'client') as ChatMessageType,
+              timestamp: new Date(Number(row.items[5].uint64Value) / 1000),
+              answered: row.items[6]?.boolValue ?? true,
             });
           }
         }
       }
       logger.info(`Retrieved last ${limit} messages for chat ${chatId}. Found: ${messages.length}`);
-      return messages.reverse(); // Возвращаем в хронологическом порядке (старые -> новые)
+      return messages.reverse();
     });
   } catch (error) {
     logger.error(`Failed to get last ${limit} chat messages for chatId ${chatId}:`, JSON.stringify(error));
@@ -576,3 +583,89 @@ export async function getQuizConfig(iamToken?: string): Promise<any | null> {
     return null;
   });
 }
+/*
+export async function getActiveChatsWithUnansweredMessages(iamToken?: string): Promise<{ chatId: number; userId: number }[]> {
+    const currentDriver = await getDriver(iamToken);
+    try {
+        return await currentDriver.tableClient.withSession(async (session) => {
+            const query = `
+                DECLARE $hoursAgo AS Timestamp;
+                
+                SELECT DISTINCT chatId, userId
+                FROM chats
+                WHERE type IN ('client', 'admin')
+                AND answered = false
+                AND timestamp > $hoursAgo
+                ORDER BY chatId, userId;
+            `;
+
+            const hoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000); // 24 часа назад
+            const timestampMicroseconds = hoursAgo.getTime() * 1000;
+
+            const { resultSets } = await session.executeQuery(query, {
+                $hoursAgo: { type: Types.TIMESTAMP, value: { uint64Value: timestampMicroseconds } },
+            });
+
+            const chats: { chatId: number; userId: number }[] = [];
+            if (resultSets[0]?.rows) {
+                for (const row of resultSets[0].rows) {
+                    if (row.items) {
+                        chats.push({
+                            chatId: Number(row.items[0].int64Value),
+                            userId: Number(row.items[1].int64Value)
+                        });
+                    }
+                }
+            }
+            
+            logger.info(`Found ${chats.length} active chats with unanswered messages`);
+            return chats;
+        });
+    } catch (error) {
+        logger.error('Failed to get active chats:', JSON.stringify(error));
+        return [];
+    }
+}
+
+export async function markMessagesAsAnswered(chatId: number, userId: number, messageIds: string[], iamToken?: string): Promise<void> {
+  const currentDriver = await getDriver(iamToken);
+  try {
+    await currentDriver.tableClient.withSession(async (session) => {
+      // Создаем параметры для каждого messageId
+      const placeholders = messageIds.map((_, index) => `$messageId${index}`).join(', ');
+      const declarations = messageIds.map((_, index) => `DECLARE $messageId${index} AS Utf8;`).join('\n        ');
+      
+      const query = `
+        ${declarations}
+        DECLARE $chatId AS Int64;
+        DECLARE $userId AS Int64;
+        DECLARE $answered AS Bool;
+
+        UPDATE chats
+        SET answered = $answered
+        WHERE chatId = $chatId 
+        AND userId = $userId 
+        AND messageId IN (${placeholders});
+      `;
+
+      const params: any = {
+        $chatId: { type: Types.INT64, value: { int64Value: chatId } },
+        $userId: { type: Types.INT64, value: { int64Value: userId } },
+        $answered: { type: Types.BOOL, value: { boolValue: true } },
+      };
+
+      // Добавляем параметры для каждого messageId
+      messageIds.forEach((messageId, index) => {
+        params[`$messageId${index}`] = { type: Types.UTF8, value: { textValue: messageId } };
+      });
+
+      await session.executeQuery(query, params);
+      logger.info(`Marked ${messageIds.length} messages as answered for chat ${chatId}`);
+    });
+  } catch (error) {
+    logger.error('Failed to mark messages as answered:', JSON.stringify(error));
+    throw error;
+  }
+}
+
+ */
