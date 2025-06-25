@@ -1,60 +1,49 @@
 import { Context } from 'grammy';
-import { addChatMessage, getLastChatMessages, ChatMessageType } from './ydb';
-import { getYandexGPTResponse } from './gpt';
-import { imitateTyping } from './telegram-utils';
-
-const FOLDER_ID = process.env.YC_FOLDER_ID;
+import {addChatMessage, ChatMessageType, getLastChatMessages, markMessagesAsAnswered} from './ydb';
+import {getYandexGPTResponse} from "./gpt";
 
 export async function chatHandler(ctx: Context, type: ChatMessageType) {
-	const userId = ctx.from?.id || 0;
 	const chatId = ctx.chat?.id || 0;
-    await addChatMessage(chatId, ctx.message?.message_id?.toString() || '0', userId, ctx.message?.text || '0', type);
-    const promptText = ctx.message?.text; // Переименовал prompt в promptText для ясности
-    if (promptText) {
-        try {
+	const userId = ctx.from?.id || 0;
+	const messageId = ctx.message?.message_id?.toString() || '0';
+	const text = ctx.message?.text || '';
 
-            if (!FOLDER_ID) {
-                console.error('Yandex Folder ID is not configured.');
-                await ctx.reply('Ошибка конфигурации: Yandex Folder ID не настроен.');
-                return;
-            }
+	await addChatMessage(chatId, messageId, userId, text, type, false);
+}
 
-            const historyMessages = await getLastChatMessages(chatId, userId, 20);
-            // Формируем только сообщения пользователя и ассистента для передачи в getYandexGPTResponse
-            const gptMessages = historyMessages.map((v) => ({
-                role: (v.type === 'client' ? 'user' : 'assistant') as 'user' | 'assistant',
-                text: v.message
-            }));
-            
-            if (!ctx.from) {
-                console.error('Cannot get user ID from context');
-                await ctx.reply('Ошибка: не удалось определить пользователя.');
-                return;
-            }
+export async function handleBatchMessages(
+	chatId: number,
+	userId: number,
+	messageIds: string[]
+) {
+	try {
+		const historyMessages = await getLastChatMessages(chatId, userId, 20);
+		const gptMessages = historyMessages.map((v: any) => ({
+			role: (v.type === 'client' ? 'user' : 'assistant') as 'user' | 'assistant',
+			text: v.message
+		}));
 
-            const gptResponse = await getYandexGPTResponse(gptMessages, 'base', ctx.from.id.toString());
-            
-            if (gptResponse && gptResponse.text) {
-            
+		const gptResponse = await getYandexGPTResponse(gptMessages, 'base', userId.toString());
+		if (gptResponse?.text) {
+			const { bot } = await import('./bot-instance');
+			const { imitateTypingBatch } = await import('./telegram-utils');
+			const textToReply = gptResponse.text;
+			const delay = textToReply.length * 200;
+			await imitateTypingBatch(bot, chatId, 0, delay);
+			await bot.api.sendMessage(chatId, `${gptResponse.text}\nИспользовано: ${(parseInt(gptResponse?.totalUsage || '0') / 50).toFixed(2)} коп.`);
 
-            // Рассчитываем задержку
-            const textToReply = gptResponse.text;
-            const startDelay = promptText.length * 100 + 2000; // Changed from prompt.length
-            const delay = textToReply.length * 200; // 300 мс на символ
-            await imitateTyping(ctx, startDelay, delay);
+			await addChatMessage(
+				chatId,
+				`bot_${Date.now()}`,
+				userId,
+				gptResponse.text,
+				'bot',
+				true
+			);
 
-            const r = await ctx.reply(textToReply + `\nИспользовано: ${(parseInt((gptResponse?.totalUsage || '0').toString()) / 50).toFixed(2)} коп`);
-            
-            await addChatMessage(chatId, r.message_id.toString() || '0', userId, textToReply, 'bot');
-                
-          } else {
-                await ctx.reply('Не удалось получить ответ от YandexGPT.');
-            }
-        } catch (error) {
-            console.error('Error processing Yandex GPT request:', JSON.stringify(error));
-            await ctx.reply('Произошла ошибка при обработке вашего запроса к YandexGPT.');
-        }
-    } else {
-        await ctx.reply('Пожалуйста, укажите ваш запрос после "y:". Например: y: расскажи анекдот');
-    }
+			await markMessagesAsAnswered(chatId, userId, messageIds);
+		}
+	} catch (error) {
+		console.error('Batch processing error:', error);
+		}
 }

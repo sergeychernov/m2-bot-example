@@ -53,6 +53,7 @@ export async function addChatMessage(
   userId: number,
   message: string,
   type: ChatMessageType,
+  answered: boolean,
   iamToken?: string
 ): Promise<void> {
   const currentDriver = await getDriver(iamToken);
@@ -64,10 +65,11 @@ export async function addChatMessage(
         DECLARE $userId AS Int64;
         DECLARE $message AS Utf8;
         DECLARE $type AS Utf8;
+        DECLARE $answered AS Bool;
         DECLARE $timestamp AS Timestamp;
 
-        UPSERT INTO chats (chatId, messageId, userId, message, type, timestamp)
-        VALUES ($chatId, $messageId, $userId, $message, $type, $timestamp);
+        UPSERT INTO chats (chatId, messageId, userId, message, type, timestamp, answered)
+        VALUES ($chatId, $messageId, $userId, $message, $type, $timestamp, $answered);
       `;
 
       const now = new Date();
@@ -80,6 +82,7 @@ export async function addChatMessage(
         $userId: { type: Types.INT64, value: { int64Value: userId } },
         $message: { type: Types.UTF8, value: { textValue: message } },
         $type: { type: Types.UTF8, value: { textValue: type } },
+        $answered: { type: Types.BOOL, value: { boolValue: answered } },
         $timestamp: { type: Types.TIMESTAMP, value: { uint64Value: timestampMicroseconds } }, 
       });
       logger.info(`Message ${messageId} for chat ${chatId} added to 'chats' table.`);
@@ -575,4 +578,79 @@ export async function getQuizConfig(iamToken?: string): Promise<any | null> {
     }
     return null;
   });
+}
+
+export async function getChatsWithUnansweredMessages(): Promise<{ chatId: number, userId: number }[]> {
+    const driver = await getDriver();
+    const query = `
+        SELECT chatId, userId
+        FROM chats
+        WHERE answered = false
+        GROUP BY chatId, userId;
+    `;
+    const result: { chatId: number, userId: number }[] = [];
+    await driver.tableClient.withSession(async (session) => {
+        const { resultSets } = await session.executeQuery(query);
+        if (resultSets[0]?.rows) {
+            for (const row of resultSets[0].rows) {
+                result.push({
+                    chatId: Number(row.items![0].int64Value),
+                    userId: Number(row.items![1].int64Value),
+                });
+            }
+        }
+    });
+    return result;
+}
+
+export async function getUnansweredMessages(chatId: number, userId: number): Promise<any[]> {
+    const driver = await getDriver();
+    const query = `
+        SELECT chatId, messageId, userId, message, type, timestamp
+        FROM chats
+        WHERE chatId = $chatId AND userId = $userId AND answered = false
+        ORDER BY timestamp ASC;
+    `;
+    const messages: any[] = [];
+    await driver.tableClient.withSession(async (session) => {
+        const { resultSets } = await session.executeQuery(query, {
+            $chatId: { type: Types.INT64, value: { int64Value: chatId } },
+            $userId: { type: Types.INT64, value: { int64Value: userId } },
+        });
+        if (resultSets[0]?.rows) {
+            for (const row of resultSets[0].rows) {
+                messages.push({
+                    chatId: Number(row.items![0].int64Value),
+                    messageId: row.items![1].textValue,
+                    userId: Number(row.items![2].int64Value),
+                    message: row.items![3].textValue,
+                    type: row.items![4].textValue,
+                    timestamp: new Date(Number(row.items![5].uint64Value) / 1000),
+                });
+            }
+        }
+    });
+    return messages;
+}
+
+export async function markMessagesAsAnswered(chatId: number, userId: number, messageIds: string[]): Promise<void> {
+    if (messageIds.length === 0) return;
+    const driver = await getDriver();
+    await driver.tableClient.withSession(async (session) => {
+        for (const messageId of messageIds) {
+            const query = `
+                DECLARE $chatId AS Int64;
+                DECLARE $userId AS Int64;
+                DECLARE $messageId AS Utf8;
+                UPDATE chats
+                SET answered = true
+                WHERE chatId = $chatId AND userId = $userId AND messageId = $messageId;
+            `;
+            await session.executeQuery(query, {
+                $chatId: { type: Types.INT64, value: { int64Value: chatId } },
+                $userId: { type: Types.INT64, value: { int64Value: userId } },
+                $messageId: { type: Types.UTF8, value: { textValue: messageId } },
+            });
+        }
+    });
 }

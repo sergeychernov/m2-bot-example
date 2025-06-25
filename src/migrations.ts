@@ -301,5 +301,47 @@ export const migrations: Migration[] = [
                 }
             }
         },
-    }
+    },
+    {
+        version: 8,
+        name: 'AddAnsweredToChatsTable',
+        async up(driver: Driver, logger: Logger) {
+            logger.info(`Applying migration: AddAnsweredToChatsTable`);
+            try {
+                await driver.queryClient.do({
+                    fn: async (session: QuerySession) => {
+                        const addColumnQuery = `
+                            ALTER TABLE chats
+                                ADD COLUMN answered Bool;
+                        `;
+                        logger.info('Executing query:\n' + addColumnQuery);
+                        await session.execute({ text: addColumnQuery });
+
+                        const updateQuery = `
+                        UPDATE chats
+                        SET answered = true;
+                    `;
+                        logger.info('Executing query:\n' + updateQuery);
+                        await session.execute({ text: updateQuery });
+
+                        logger.info('Migration AddAnsweredToChatsTable applied successfully');
+                    }
+                });
+            } catch (error) {
+                // It's okay if the column already exists, but log other errors
+                if (error instanceof Error) {
+                    if (error.message.includes('already exists') || error.message.includes('Cannot add column to table')) {
+                        logger.warn(`Could not add column answered, it might already exist or there's another schema issue: ${error.message}`);
+                    } else {
+                        logger.error('Failed to apply migration AddAnsweredToChatsTable:', error);
+                        throw error; // Re-throw to stop further processing if it's a critical error
+                    }
+                } else {
+                    // Handle non-Error objects thrown
+                    logger.error('Failed to apply migration AddAnsweredToChatsTable with a non-Error object:', error);
+                    throw error;
+                }
+            }
+        },
+    },
 ];

@@ -19,12 +19,8 @@ import { handleSettingsPost } from './settings.be'; // <<< Добавлен эт
 import { debugClientCommands } from './debug-client-commands';
 import { chatHandler } from './chat-handler';
 import { initializeQuiz } from './quiz-handler';
-
-const botToken = process.env.BOT_TOKEN;
-if (!botToken) {
-  throw new Error('BOT_TOKEN must be provided!');
-}
-const bot = new Bot(botToken);
+import { bot } from './bot-instance';
+import {processAllUnansweredChats} from "./process-unanswered-messages";
 
 // Глобальная переменная для отслеживания инициализации
 let botInitialized = false;
@@ -175,8 +171,20 @@ export async function handler(event: any, context?: any) {
   console.log('Received event:', JSON.stringify(event));
   const iamToken = iam(context);
   setIamToken(iamToken);
-  
-    
+
+  if (event?.details?.payload) {
+    try {
+      const payload = JSON.parse(event.details.payload);
+      if (payload.replies_scheduler) {
+        await processAllUnansweredChats();
+        return { statusCode: 200, body: 'Unanswered chats processed (from timer)' };
+      }
+    } catch (e) {
+      console.error('Failed to parse timer payload:', e);
+      return { statusCode: 400, body: 'Invalid timer payload' };
+    }
+  }
+
   try {
     if (!dbDriver) {
       dbDriver = await getDriver(iamToken || undefined);
