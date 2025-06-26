@@ -30,7 +30,7 @@ export async function handleBatchMessages(
 			const textToReply = gptResponse.text;
 			const delay = textToReply.length * 200;
 			await imitateTypingBatch(bot, chatId, 0, delay);
-			const sentMessage = await bot.api.sendMessage(chatId, `${gptResponse.text}\nИспользовано: ${(parseInt(gptResponse?.totalUsage || '0') / 50).toFixed(2)} коп.`);
+			const sentMessage = await bot.api.sendMessage(chatId, gptResponse.text);
 
 			await addChatMessage(
 				chatId,
