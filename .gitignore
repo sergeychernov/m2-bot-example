@@ -2,6 +2,7 @@
 .env
 .envtest
 .envanswering
+.envansweringtest
 
 # Node.js
 node_modules/
