@@ -214,13 +214,8 @@ Telegram бот должен знать, куда отправлять обно�
 1. Скопируйте URL вашей функции, полученный на предыдущем шаге.
 2. Замените <BOT_TOKEN> на ваш токен бота и <FUNCTION_URL> на URL вашей функции в команде ниже:
    ```
-   curl -X POST "https://api.
-   telegram.org/bot<BOT_TOKEN>/
-   setWebhook" \
-        -H "Content-Type: 
-        application/json" \
-        -d '{"url": 
-        "<FUNCTION_URL>"}'
+   curl -X POST https://api.telegram.org/bot<YOUR_BOT_TOKEN>/setWebhook \
+     -d "url=https://yourdomain.com/webhook"
    ``` Пример:
    ```
    curl -X POST "https://api.
