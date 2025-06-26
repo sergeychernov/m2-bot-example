@@ -19,12 +19,8 @@ import { handleSettingsPost } from './settings.be'; // <<< Добавлен эт
 import { debugClientCommands } from './debug-client-commands';
 import { chatHandler } from './chat-handler';
 import { initializeQuiz } from './quiz-handler';
-
-const botToken = process.env.BOT_TOKEN;
-if (!botToken) {
-  throw new Error('BOT_TOKEN must be provided!');
-}
-const bot = new Bot(botToken);
+import { bot } from './bot-instance';
+import {processAllUnansweredChats} from "./process-unanswered-messages";
 
 // Глобальная переменная для отслеживания инициализации
 let botInitialized = false;
@@ -175,8 +171,7 @@ export async function handler(event: any, context?: any) {
   console.log('Received event:', JSON.stringify(event));
   const iamToken = iam(context);
   setIamToken(iamToken);
-  
-    
+
   try {
     if (!dbDriver) {
       dbDriver = await getDriver(iamToken || undefined);
@@ -191,10 +186,10 @@ export async function handler(event: any, context?: any) {
     if (!event.body) {
       console.error('Event body is missing');
       return { statusCode: 400, body: 'Event body is missing' };
-  }
+    }
     if (event.isBase64Encoded) {//бекенд глобальных настроек
       if (event.httpMethod === 'POST') {
-      return await handleSettingsPost(event);
+        return await handleSettingsPost(event);
       }
     }
         if (!botInitialized) {
