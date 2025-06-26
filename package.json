@@ -28,6 +28,5 @@
     "@types/node": "^24.0.0",
     "dotenv-cli": "^8.0.0",
     "typescript": "^5.8.3"
-  },
-  "packageManager": "yarn@1.22.10+sha512.21a9d0188f5144f00df3b5464c5ef3b36bb1912c904ab48fb23bb408e81bb0a40e397af92ed7153dec975a0c156b4cb01b777c760ea449828606e60ad36d6a78"
+  }
 }
