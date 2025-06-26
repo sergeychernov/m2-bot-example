@@ -8,12 +8,12 @@
     "build": "tsc",
     "zip": "npm run build && rm -f function.zip && zip -j function.zip dist/*.js src/*.json src/*.md package.json package-lock.json",
     "setup": "dotenv -e .env -- bash -c 'yc config set cloud-id $YC_CLOUD_ID && yc config set folder-id $YC_FOLDER_ID'",
-    "_deploy-common": "npm run clear-cache && npm run zip && yc serverless function version create --function-name=$YC_FUNCTION_NAME --runtime=$YC_RUNTIME --entrypoint=$YC_ENTRYPOINT --memory=$YC_MEMORY --execution-timeout=$YC_EXECUTION_TIMEOUT --source-path=function.zip --cloud-id=$YC_CLOUD_ID --folder-id=$YC_FOLDER_ID --service-account-id=$YC_SERVICE_ACCOUNT --environment BOT_TOKEN=$BOT_TOKEN,YC_FOLDER_ID=$YC_FOLDER_ID,YDB_ENDPOINT=$YDB_ENDPOINT,YDB_DATABASE=$YDB_DATABASE,YDB_CONNECTION_STRING=$YDB_CONNECTION_STRING && echo \"Function deployed. Attempting to initialize database...\" && yc serverless function invoke --name=$YC_FUNCTION_NAME --data \"{\\\"setup_database\\\": true}\" && echo \"Database initialization call finished.\"",
-    "deploy": "dotenv -e .env -- bash -c 'npm run _deploy-common'",
-    "deploy-test": "dotenv -e .envtest -- bash -c 'npm run _deploy-common'",
+    "_deploy-common": "npm run zip && yc serverless function version create --function-name=$YC_FUNCTION_NAME --runtime=$YC_RUNTIME --entrypoint=$YC_ENTRYPOINT --memory=$YC_MEMORY --execution-timeout=$YC_EXECUTION_TIMEOUT --source-path=function.zip --cloud-id=$YC_CLOUD_ID --folder-id=$YC_FOLDER_ID --service-account-id=$YC_SERVICE_ACCOUNT --environment BOT_TOKEN=$BOT_TOKEN,YC_FOLDER_ID=$YC_FOLDER_ID,YDB_ENDPOINT=$YDB_ENDPOINT,YDB_DATABASE=$YDB_DATABASE,YDB_CONNECTION_STRING=$YDB_CONNECTION_STRING && echo \"Function deployed. Attempting to initialize database...\" && yc serverless function invoke --name=$YC_FUNCTION_NAME --data \"{\\\"setup_database\\\": true}\" && echo \"Database initialization call finished.\"",
+    "deploy": "env -u YC_FUNCTION_NAME -u BOT_TOKEN -u YDB_DATABASE dotenv -e .env -- bash -c 'npm run _deploy-common'",
+    "deploy-test": "env -u YC_FUNCTION_NAME -u BOT_TOKEN -u YDB_DATABASE dotenv -e .envtest -- bash -c 'npm run _deploy-common'",
     "deploy-answering": "dotenv -e .envanswering -- bash -c 'npm run _deploy-common'",
     "deploy-answering-test": "dotenv -e .envansweringtest -- bash -c 'npm run _deploy-common'",
-    "clear-cache": "unset BOT_TOKEN && unset YC_FUNCTION_NAME && unset YDB_DATABASE"
+    "clear-cache": "echo \"Для очистки кеша выполните: unset YC_FUNCTION_NAME BOT_TOKEN YDB_DATABASE\""
   },
   "keywords": [],
   "author": "",

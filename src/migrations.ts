@@ -344,4 +344,100 @@ export const migrations: Migration[] = [
             }
         },
     },
+    {
+        version: 9,
+        name: 'UpdateUsersTableUserIdToInt64AndAddBusinessConnectionId',
+        async up(driver: Driver, logger: Logger) {
+            logger.info(`Applying migration: UpdateUsersTableUserIdToInt64AndAddBusinessConnectionId`);
+
+            await driver.queryClient.do({ fn: async (session: QuerySession) => {
+                logger.info('Dropping temporary users_updated table if it exists...');
+                await session.execute({ text: 'DROP TABLE IF EXISTS users_updated;' });
+
+                logger.info('Creating temporary users_updated table with Int64 userId and business_connection_id...');
+                await session.execute({ text: `
+                    CREATE TABLE users_updated (
+                        userId Int64,
+                        profile Optional<Json>,
+                        mode Optional<Utf8>,
+                        business_connection_id Optional<Utf8>,
+                        PRIMARY KEY (userId)
+                    );
+                `});
+
+                logger.info('Copying data from users to users_updated with type conversion...');
+                await session.execute({ text: `
+                    UPSERT INTO users_updated (userId, profile, mode, business_connection_id)
+                    SELECT CAST(userId AS Int64), profile, mode, NULL AS business_connection_id FROM users;
+                `});
+
+                logger.info('Dropping old users table...');
+                await session.execute({ text: 'DROP TABLE users;' });
+
+                logger.info('Renaming users_updated to users...');
+                await session.execute({ text: 'ALTER TABLE users_updated RENAME TO users;' });
+
+                logger.info('Migration UpdateUsersTableUserIdToInt64AndAddBusinessConnectionId applied successfully');
+            }}).catch(async (error) => {
+                logger.error('Failed to apply migration UpdateUsersTableUserIdToInt64AndAddBusinessConnectionId:', JSON.stringify(error));
+                try {
+                    await driver.queryClient.do({ fn: async (session: QuerySession) => {
+                        logger.info('Attempting to clean up by dropping users_updated table...');
+                        await session.execute({ text: 'DROP TABLE IF EXISTS users_updated;' });
+                    }});
+                } catch (cleanupError) {
+                    logger.error('Failed to cleanup users_updated table after migration failure:', JSON.stringify(cleanupError));
+                }
+                throw error;
+            });
+        },
+    },
+    {
+        version: 10,
+        name: 'UpdateQuizStatesTableUserIdToInt64',
+        async up(driver: Driver, logger: Logger) {
+            logger.info(`Applying migration: UpdateQuizStatesTableUserIdToInt64`);
+
+            await driver.queryClient.do({ fn: async (session: QuerySession) => {
+                logger.info('Dropping temporary quiz_states_updated table if it exists...');
+                await session.execute({ text: 'DROP TABLE IF EXISTS quiz_states_updated;' });
+
+                logger.info('Creating temporary quiz_states_updated table with Int64 userId...');
+                await session.execute({ text: `
+                    CREATE TABLE quiz_states_updated (
+                        userId Int64,
+                        step Int32,
+                        answers Json,
+                        allowExit Bool,
+                        PRIMARY KEY (userId)
+                    );
+                `});
+
+                logger.info('Copying data from quiz_states to quiz_states_updated with type conversion...');
+                await session.execute({ text: `
+                    UPSERT INTO quiz_states_updated (userId, step, answers, allowExit)
+                    SELECT CAST(userId AS Int64), step, answers, allowExit FROM quiz_states;
+                `});
+
+                logger.info('Dropping old quiz_states table...');
+                await session.execute({ text: 'DROP TABLE quiz_states;' });
+
+                logger.info('Renaming quiz_states_updated to quiz_states...');
+                await session.execute({ text: 'ALTER TABLE quiz_states_updated RENAME TO quiz_states;' });
+
+                logger.info('Migration UpdateQuizStatesTableUserIdToInt64 applied successfully');
+            }}).catch(async (error) => {
+                logger.error('Failed to apply migration UpdateQuizStatesTableUserIdToInt64:', JSON.stringify(error));
+                try {
+                    await driver.queryClient.do({ fn: async (session: QuerySession) => {
+                        logger.info('Attempting to clean up by dropping quiz_states_updated table...');
+                        await session.execute({ text: 'DROP TABLE IF EXISTS quiz_states_updated;' });
+                    }});
+                } catch (cleanupError) {
+                    logger.error('Failed to cleanup quiz_states_updated table after migration failure:', JSON.stringify(cleanupError));
+                }
+                throw error;
+            });
+        },
+    },
 ];

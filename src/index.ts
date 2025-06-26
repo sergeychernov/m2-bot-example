@@ -19,6 +19,7 @@ import { handleSettingsPost } from './settings.be'; // <<< Добавлен эт
 import { debugClientCommands } from './debug-client-commands';
 import { chatHandler } from './chat-handler';
 import { initializeQuiz } from './quiz-handler';
+import { initializeStartCommand } from './start-handler';
 import { bot } from './bot-instance';
 import {processAllUnansweredChats} from "./process-unanswered-messages";
 
@@ -43,6 +44,9 @@ async function initializeBot() {
       { command: 'demo', description: 'Демонстрация возможностей' }
     ]);
     console.log('Bot commands set.');
+    // Команды /quiz и /start
+    initializeStartCommand(bot);
+    initializeQuiz(bot);
     botInitialized = true;
   } catch (error) {
     console.error('Failed to initialize bot or set commands:', error);
@@ -78,9 +82,6 @@ async function initializeBot() {
 //   }
 // };
 
-// Команды /quiz и /start
-initializeQuiz(bot);
-
 // Команда /help
 bot.command('help', async (ctx) => {
     await ctx.reply(
@@ -98,7 +99,7 @@ initializeClientsCommand(bot);
 
 // Команда /demo
 bot.command('demo', async (ctx) => {
-  const userId = ctx.from?.id.toString();
+  const userId = ctx.from?.id;
   if (!userId) {
     await ctx.reply('Не удалось определить ваш ID.');
     return;
@@ -148,7 +149,7 @@ bot.hears(yandexGptRegex, async (ctx, next) => {
     case 'realtor':
       break;
     case 'admin':
-      const userId = ctx.from?.id.toString();
+      const userId = ctx.from?.id;
       const mode:UserMode = userId?await getMode(userId):'none';
       if (mode === 'demo') {
         setClient(ctx.from as Client);

@@ -63,7 +63,7 @@ export async function getYandexGPTResponse(
         text: string;
     }[],
     promptType: string,
-    userId: string
+    userId: number
 ): Promise<{ text: string; totalUsage?: string } | null> {
     try {
         if (!currentIamToken) {
