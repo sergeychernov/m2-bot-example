@@ -172,19 +172,6 @@ export async function handler(event: any, context?: any) {
   const iamToken = iam(context);
   setIamToken(iamToken);
 
-  if (event?.details?.payload) {
-    try {
-      const payload = JSON.parse(event.details.payload);
-      if (payload.replies_scheduler) {
-        await processAllUnansweredChats();
-        return { statusCode: 200, body: 'Unanswered chats processed (from timer)' };
-      }
-    } catch (e) {
-      console.error('Failed to parse timer payload:', e);
-      return { statusCode: 400, body: 'Invalid timer payload' };
-    }
-  }
-
   try {
     if (!dbDriver) {
       dbDriver = await getDriver(iamToken || undefined);
@@ -199,10 +186,10 @@ export async function handler(event: any, context?: any) {
     if (!event.body) {
       console.error('Event body is missing');
       return { statusCode: 400, body: 'Event body is missing' };
-  }
+    }
     if (event.isBase64Encoded) {//бекенд глобальных настроек
       if (event.httpMethod === 'POST') {
-      return await handleSettingsPost(event);
+        return await handleSettingsPost(event);
       }
     }
         if (!botInitialized) {
