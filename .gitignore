@@ -1,6 +1,7 @@
 # Environment variables
 .env
 .envtest
+.envanswering
 
 # Node.js
 node_modules/
