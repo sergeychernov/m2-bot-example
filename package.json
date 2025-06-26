@@ -8,7 +8,10 @@
     "build": "tsc",
     "zip": "npm run build && rm -f function.zip && zip -j function.zip dist/*.js src/*.json src/*.md package.json package-lock.json",
     "setup": "dotenv -e .env -- bash -c 'yc config set cloud-id $YC_CLOUD_ID && yc config set folder-id $YC_FOLDER_ID'",
-    "deploy": "dotenv -e .env -- bash -c 'npm run zip && yc serverless function version create --function-name=$YC_FUNCTION_NAME --runtime=$YC_RUNTIME --entrypoint=$YC_ENTRYPOINT --memory=$YC_MEMORY --execution-timeout=$YC_EXECUTION_TIMEOUT --source-path=function.zip --cloud-id=$YC_CLOUD_ID --folder-id=$YC_FOLDER_ID --service-account-id=$YC_SERVICE_ACCOUNT --environment BOT_TOKEN=$BOT_TOKEN,YC_FOLDER_ID=$YC_FOLDER_ID,YDB_ENDPOINT=$YDB_ENDPOINT,YDB_DATABASE=$YDB_DATABASE,YDB_CONNECTION_STRING=$YDB_CONNECTION_STRING && echo \"Function deployed. Attempting to initialize database...\" && yc serverless function invoke --id=$YC_FUNCTION_ID --data \"{\\\"setup_database\\\": true}\" && echo \"Database initialization call finished.\"'"
+    "_deploy-common": "npm run clear-cache && npm run zip && yc serverless function version create --function-name=$YC_FUNCTION_NAME --runtime=$YC_RUNTIME --entrypoint=$YC_ENTRYPOINT --memory=$YC_MEMORY --execution-timeout=$YC_EXECUTION_TIMEOUT --source-path=function.zip --cloud-id=$YC_CLOUD_ID --folder-id=$YC_FOLDER_ID --service-account-id=$YC_SERVICE_ACCOUNT --environment BOT_TOKEN=$BOT_TOKEN,YC_FOLDER_ID=$YC_FOLDER_ID,YDB_ENDPOINT=$YDB_ENDPOINT,YDB_DATABASE=$YDB_DATABASE,YDB_CONNECTION_STRING=$YDB_CONNECTION_STRING && echo \"Function deployed. Attempting to initialize database...\" && yc serverless function invoke --name=$YC_FUNCTION_NAME --data \"{\\\"setup_database\\\": true}\" && echo \"Database initialization call finished.\"",
+    "deploy": "dotenv -e .env -- bash -c 'npm run _deploy-common'",
+    "deploy-test": "dotenv -e .envtest -- bash -c 'npm run _deploy-common'",
+    "clear-cache": "unset BOT_TOKEN && unset YC_FUNCTION_NAME && unset YDB_DATABASE"
   },
   "keywords": [],
   "author": "",
@@ -18,13 +21,11 @@
     "ajv": "^8.17.1",
     "ajv-formats": "^3.0.1",
     "grammy": "^1.36.3",
-    "node-fetch": "^3.3.2",
     "ydb-sdk": "^5.11.0"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",
     "dotenv-cli": "^8.0.0",
     "typescript": "^5.8.3"
-  },
-  "packageManager": "yarn@1.22.10+sha512.21a9d0188f5144f00df3b5464c5ef3b36bb1912c904ab48fb23bb408e81bb0a40e397af92ed7153dec975a0c156b4cb01b777c760ea449828606e60ad36d6a78"
+  }
 }
