@@ -84,3 +84,19 @@ export function createMarkdownV2Message(text: string) {
         parse_mode: 'MarkdownV2' as const
     };
 }
+
+/**
+ * Формирует markdown-блок профиля для Telegram MarkdownV2
+ * @param userData - объект профиля
+ * @returns строка с профилем в формате MarkdownV2
+ */
+export function formatProfileMarkdownV2(userData: Record<string, any>): string {
+  return Object.entries(userData)
+    .map(([key, value]) => {
+      const displayValue = Array.isArray(value)
+        ? value.map(v => formatMarkdownV2Text(v)).join(', ')
+        : formatMarkdownV2Text(value);
+      return `${formatMarkdownV2Text(key, { bold: true })}: ${displayValue}`;
+    })
+    .join('\n');
+}
