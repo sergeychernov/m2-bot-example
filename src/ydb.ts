@@ -289,19 +289,19 @@ export async function closeDriver() {
   }
 }
 
-export async function addBotClientData(userId: string, profile: Record<string, any>, mode: string = 'none', iamToken?: string): Promise<void> {
+export async function addBotClientData(userId: number, profile: Record<string, any>, mode: string = 'none', iamToken?: string): Promise<void> {
   const currentDriver = await getDriver(iamToken);
   try {
     await currentDriver.tableClient.withSession(async (session) => {
       const query = `
-        DECLARE $userId AS Utf8;
+        DECLARE $userId AS Int64;
         DECLARE $profile AS Json;
         DECLARE $mode AS Utf8;
         UPSERT INTO users (userId, profile, mode)
         VALUES ($userId, $profile, $mode);
       `;
       await session.executeQuery(query, {
-        $userId: { type: Types.UTF8, value: { textValue: userId } },
+        $userId: { type: Types.INT64, value: { int64Value: userId } },
         $profile: { type: Types.JSON, value: { textValue: JSON.stringify(profile) } },
         $mode: { type: Types.UTF8, value: { textValue: mode } },
       });
@@ -313,16 +313,16 @@ export async function addBotClientData(userId: string, profile: Record<string, a
   }
 }
 
-export async function getBotClientData(userId: string, iamToken?: string): Promise<{ profile: Record<string, any>, mode: string } | null> {
+export async function getBotClientData(userId: number, iamToken?: string): Promise<{ profile: Record<string, any>, mode: string } | null> {
   const currentDriver = await getDriver(iamToken);
   try {
     return await currentDriver.tableClient.withSession(async (session) => {
       const query = `
-        DECLARE $userId AS Utf8;
+        DECLARE $userId AS Int64;
         SELECT profile, mode FROM users WHERE userId = $userId LIMIT 1;
       `;
       const { resultSets } = await session.executeQuery(query, {
-        $userId: { type: Types.UTF8, value: { textValue: userId } },
+        $userId: { type: Types.INT64, value: { int64Value: userId } },
       });
       if (resultSets[0]?.rows && resultSets[0].rows.length > 0) {
         const row = resultSets[0].rows[0];
@@ -424,7 +424,7 @@ export async function setClient(client: Client, iamToken?: string): Promise<void
 }
 
 export async function saveQuizState(
-  userId: string,
+  userId: number,
   step: number,
   answers: Record<string, any>,
   allowExit: boolean
@@ -432,7 +432,7 @@ export async function saveQuizState(
   const currentDriver = await getDriver();
   await currentDriver.tableClient.withSession(async (session) => {
     const query = `
-      DECLARE $userId AS Utf8;
+      DECLARE $userId AS Int64;
       DECLARE $step AS Int32;
       DECLARE $answers AS Json;
       DECLARE $allowExit AS Bool;
@@ -440,7 +440,7 @@ export async function saveQuizState(
       VALUES ($userId, $step, $answers, $allowExit);
     `;
     await session.executeQuery(query, {
-      $userId: { type: Types.UTF8, value: { textValue: userId } },
+      $userId: { type: Types.INT64, value: { int64Value: userId } },
       $step: { type: Types.INT32, value: { int32Value: step } },
       $answers: { type: Types.JSON, value: { textValue: JSON.stringify(answers) } },
       $allowExit: { type: Types.BOOL, value: { boolValue: allowExit } },
@@ -449,18 +449,18 @@ export async function saveQuizState(
 }
 
 export async function loadQuizState(
-    userId: string,
+    userId: number,
 ): Promise<{ step: number; answers: Record<string, any>; allowExit: boolean } | null> {
   const currentDriver = await getDriver();
   return await currentDriver.tableClient.withSession(async (session) => {
     const query = `
-      DECLARE $userId AS Utf8;
+      DECLARE $userId AS Int64;
       SELECT step, answers, allowExit FROM quiz_states
       WHERE userId = $userId
       LIMIT 1;
     `;
     const { resultSets } = await session.executeQuery(query, {
-      $userId: { type: Types.UTF8, value: { textValue: userId } },
+      $userId: { type: Types.INT64, value: { int64Value: userId } },
     });
     if (resultSets[0]?.rows && resultSets[0].rows.length > 0) {
       const row = resultSets[0].rows[0];
@@ -481,39 +481,39 @@ export async function loadQuizState(
   });
 }
 
-export async function deleteQuizState(userId: string): Promise<void> {
+export async function deleteQuizState(userId: number): Promise<void> {
   const currentDriver = await getDriver();
   await currentDriver.tableClient.withSession(async (session) => {
     const query = `
-      DECLARE $userId AS Utf8;
+      DECLARE $userId AS Int64;
       DELETE FROM quiz_states WHERE userId = $userId;
     `;
     await session.executeQuery(query, {
-      $userId: { type: Types.UTF8, value: { textValue: userId } },
+      $userId: { type: Types.INT64, value: { int64Value: userId } },
     });
   });
 }
 
-export type UserMode = 'demo' | 'quiz' | 'none';
+export type UserMode = 'demo' | 'quiz' | 'none' | 'start' | 'first-start';
 
-export async function getMode(userId: string, iamToken?: string): Promise<UserMode> {
+export async function getMode(userId: number, iamToken?: string): Promise<UserMode> {
     const currentDriver = await getDriver(iamToken);
     try {
         return await currentDriver.tableClient.withSession(async (session) => {
             const query = `
-                DECLARE $userId AS Utf8;
+                DECLARE $userId AS Int64;
                 SELECT mode FROM users WHERE userId = $userId LIMIT 1;
             `;
             const { resultSets } = await session.executeQuery(query, {
-                $userId: { type: Types.UTF8, value: { textValue: userId } },
+                $userId: { type: Types.INT64, value: { int64Value: userId } },
             });
             if (resultSets[0]?.rows && resultSets[0].rows.length > 0) {
                 const row = resultSets[0].rows[0];
                 // Убедимся, что у row.items[0] есть значение, иначе вернем 'none'
                 const modeValue = row.items![0].textValue;
-                return (modeValue || 'none') as UserMode;
+                return (modeValue || 'first-start') as UserMode;
             }
-            return 'none';
+          return 'first-start';
         });
     } catch (error) {
         logger.error(`Failed to get mode for user ${userId}:`, JSON.stringify(error));
@@ -521,17 +521,17 @@ export async function getMode(userId: string, iamToken?: string): Promise<UserMo
     }
 }
 
-export async function setMode(userId: string, mode: UserMode, iamToken?: string): Promise<void> {
+export async function setMode(userId: number, mode: UserMode, iamToken?: string): Promise<void> {
     const currentDriver = await getDriver(iamToken);
     try {
         await currentDriver.tableClient.withSession(async (session) => {
             const query = `
-                DECLARE $userId AS Utf8;
+                DECLARE $userId AS Int64;
                 DECLARE $mode AS Utf8;
                 UPSERT INTO users (userId, mode) VALUES ($userId, $mode);
             `;
             await session.executeQuery(query, {
-                $userId: { type: Types.UTF8, value: { textValue: userId } },
+                $userId: { type: Types.INT64, value: { int64Value: userId } },
                 $mode: { type: Types.UTF8, value: { textValue: mode } },
             });
             logger.info(`Mode for user ${userId} set to ${mode}.`);
@@ -653,4 +653,27 @@ export async function markMessagesAsAnswered(chatId: number, userId: number, mes
             });
         }
     });
+}
+
+export async function updateUserBusinessConnection(userId: number, businessConnectionId: string, iamToken?: string): Promise<void> {
+  const currentDriver = await getDriver(iamToken);
+  try {
+    await currentDriver.tableClient.withSession(async (session) => {
+      const query = `
+        DECLARE $userId AS Int64;
+        DECLARE $businessConnectionId AS Utf8;
+        
+        UPSERT INTO users (userId, business_connection_id)
+        VALUES ($userId, $businessConnectionId);
+      `;
+      await session.executeQuery(query, {
+        $userId: { type: Types.INT64, value: { int64Value: userId } },
+        $businessConnectionId: { type: Types.UTF8, value: { textValue: businessConnectionId } },
+      });
+      logger.info(`Business connection ID ${businessConnectionId} updated for user ${userId} in 'users' table.`);
+    });
+  } catch (error) {
+    logger.error('Failed to update user business connection:', error);
+    throw error;
+  }
 }

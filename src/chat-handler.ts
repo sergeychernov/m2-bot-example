@@ -23,7 +23,7 @@ export async function handleBatchMessages(
 			text: v.message
 		}));
 
-		const gptResponse = await getYandexGPTResponse(gptMessages, 'base', userId.toString());
+		const gptResponse = await getYandexGPTResponse(gptMessages, 'base', userId);
 		if (gptResponse?.text) {
 			const { bot } = await import('./bot-instance');
 			const { imitateTypingBatch } = await import('./telegram-utils');

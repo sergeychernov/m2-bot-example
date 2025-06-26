@@ -213,7 +213,7 @@ export function initializeClientsCommand(bot: any) {
     const clientId = ctx.match[1];
 	const client = await getClient(Number(clientId));
 	
-	const historyMessages = await getLastChatMessages(clientId, ctx.from.id.toString(), 50);
+	const historyMessages = await getLastChatMessages(Number(clientId), ctx.from.id, 50);
             // Формируем только сообщения пользователя и ассистента для передачи в getYandexGPTResponse
 	const gptMessages = historyMessages.map((v) => ({
 		role: (v.type === 'client' ? 'user' : 'assistant') as 'user' | 'assistant',
@@ -226,7 +226,7 @@ export function initializeClientsCommand(bot: any) {
 		return;
 	}
 
-	const gptResponse = await getYandexGPTResponse(gptMessages, 'summary', ctx.from.id.toString());
+	const gptResponse = await getYandexGPTResponse(gptMessages, 'summary', ctx.from.id);
 	
 	
 

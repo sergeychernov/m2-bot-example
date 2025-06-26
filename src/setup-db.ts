@@ -135,9 +135,10 @@ async function ensureUsersTableExists(iamToken?: string): Promise<void> {
 				await session.createTable(
 					'users',
 					new TableDescription()
-						.withColumn(new Column('userId', Types.UTF8))
+						.withColumn(new Column('userId', Types.INT64))
 						.withColumn(new Column('profile', Types.optional(Types.JSON)))
                         .withColumn(new Column('mode', Types.optional(Types.UTF8)))
+						.withColumn(new Column('business_connection_id', Types.optional(Types.UTF8)))
 						.withPrimaryKeys('userId')
 				);
 				logger.info("Table 'users' created successfully.");
@@ -161,7 +162,7 @@ async function ensureQuizStatesTableExists(iamToken?: string): Promise<void> {
 				await session.createTable(
 					'quiz_states',
 					new TableDescription()
-						.withColumn(new Column('userId', Types.UTF8))
+						.withColumn(new Column('userId', Types.INT64))
 						.withColumn(new Column('step', Types.INT32))
 						.withColumn(new Column('answers', Types.JSON))
 						.withColumn(new Column('allowExit', Types.BOOL))

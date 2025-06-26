@@ -3,6 +3,7 @@ import {
     Prompt,
     getBotClientData,
 } from './ydb';
+import {formatProfileMarkdownV2} from "./telegram-utils";
 
 // ID вашего каталога в Yandex Cloud
 const FOLDER_ID = process.env.YC_FOLDER_ID; // Оставляем, если используется для x-folder-id или если modelUri в json не полный
@@ -42,15 +43,7 @@ export function formatSystemPrompt(basePrompt: string, userData: Record<string, 
         prompt = prompt.replace(new RegExp(`{{${key}}}`, 'g'), userData[key]);
     }
 
-    const profileData = Object.entries(userData)
-        .map(([key, value]) => {
-            if (Array.isArray(value)) {
-                return `- ${key}: ${value.join(', ')}`;
-            } else {
-                return `- ${key}: ${value}`;
-            }
-        })
-        .join('\n');
+    const profileData = formatProfileMarkdownV2(userData);
     prompt = prompt.replace(/{{profile}}/g, profileData);
 
     return prompt;
@@ -63,7 +56,7 @@ export async function getYandexGPTResponse(
         text: string;
     }[],
     promptType: string,
-    userId: string
+    userId: number
 ): Promise<{ text: string; totalUsage?: string } | null> {
     try {
         if (!currentIamToken) {
