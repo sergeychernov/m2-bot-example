@@ -1,4 +1,3 @@
-import { Bot } from 'grammy';
 import { initializeClientsCommand } from './clients';
 import { setIamToken } from './gpt';
 import {
@@ -22,6 +21,9 @@ import { initializeQuiz } from './quiz-handler';
 import { initializeStartCommand } from './start-handler';
 import { bot } from './bot-instance';
 import {processAllUnansweredChats} from "./process-unanswered-messages";
+import { handleVoiceMessage } from './voice-handler';
+import { TelegramVoice } from './telegram-utils';
+import { Context } from 'grammy';
 
 // Глобальная переменная для отслеживания инициализации
 let botInitialized = false;
@@ -54,33 +56,6 @@ async function initializeBot() {
     // throw error; // Раскомментируйте, если инициализация критична
   }
 }
-
-// interface Client { 
-//   id: string;
-//   firstName: string;
-//   lastName: string;
-//   category: 'buyer' | 'seller';
-//   status: 'active' | 'archived' | 'banned';
-//   username?: string;
-//   propertyInfo: {
-//     type: string;
-//     requirements?: string;
-//     description?: string;
-//     price?: number;
-//   };
-// }
-
-// Функция для загрузки клиентов из JSON файла
-// const loadClients = (): Client[] => {
-//   try {
-//     const filePath = path.resolve(__dirname, 'clients.json'); // Путь теперь относительно __dirname внутри src
-//     const fileContent = fs.readFileSync(filePath, 'utf-8');
-//     return JSON.parse(fileContent) as Client[];
-//   } catch (error) {
-//     console.error('Error loading clients.json:', error);
-//     return [];
-//   }
-// };
 
 // Команда /help
 bot.command('help', async (ctx) => {
@@ -168,7 +143,7 @@ let dbDriver: Driver | undefined;
 // let initialPromptAdded = false; // Удаляем этот флаг
 
 // Обновленный обработчик Cloud Function
-export async function handler(event: any, context?: any) {
+export async function handler(event: any, context?: Context) {
   console.log('Received event:', JSON.stringify(event));
   const iamToken = iam(context);
   setIamToken(iamToken);
@@ -205,35 +180,35 @@ export async function handler(event: any, context?: any) {
       console.log('Parsed update:', JSON.stringify(update));
 
         // Преобразуем business_message в стандартный формат сообщения Telegram
-        if (update.business_message) {
+    if (update.business_message) {
+          // Обработка голосового сообщения
+            if (update.business_message.voice) {
+              const { file_id, duration, mime_type, file_size } = update.business_message.voice as TelegramVoice;
+              if (duration < 30 && (file_size ?? 0) < 1000000 && mime_type) {
+                const chatId = update.business_message.chat.id;
+                const businessConnectionId = update.business_message.business_connection_id;
+                
+                console.log('Voice message received, processing with SpeechKit...');
+                
+                try {
+                  const recognized = await handleVoiceMessage(file_id, chatId, mime_type, businessConnectionId, context);
+                  if (recognized?.recognizedText) {
+                    update.business_message.text = recognized?.recognizedText;
+                  }
+                } catch (voiceError) {
+                    console.error('Error processing voice message:', voiceError);
+                }
+              } else {
+                console.log('TODO: async voice processing')
+              }
+            }
+      
             update.message = {
                 ...update.business_message,
                 business_connection_id: update.business_message.business_connection_id
             };
             
-            // Обработка голосового сообщения
-            if (update.message.voice) {
-                const fileId = update.message.voice.file_id;
-                console.log('Voice message received, file_id:', fileId);
-                
-                try {
-                    // Получаем информацию о файле
-                    const file = await bot.api.getFile(fileId);
-                    console.log('File info:', JSON.stringify(file));
-                    
-                    // Формируем URL для скачивания
-                    const fileUrl = `https://api.telegram.org/file/bot${process.env.BOT_TOKEN}/${file.file_path}`;
-                    console.log('File download URL:', fileUrl);
-                    
-                    // Здесь вы можете скачать файл или передать URL дальше для обработки
-                    // Например, для скачивания:
-                    // const response = await fetch(fileUrl);
-                    // const audioBuffer = await response.arrayBuffer();
-                    
-                } catch (error) {
-                    console.error('Error processing voice message:', error);
-                }
-            }
+            
         }
 
         await bot.handleUpdate(update);
