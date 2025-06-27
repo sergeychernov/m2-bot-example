@@ -1,9 +1,9 @@
 import {
     getLatestPromptByType,
-    Prompt,
-    getBotClientData,
+    Prompt
 } from './ydb';
-import {formatProfileMarkdownV2} from "./telegram-utils";
+import { formatProfileMarkdownV2 } from "./telegram-utils";
+import { getUserDataByBusinessConnectionId } from './users';
 
 // ID вашего каталога в Yandex Cloud
 const FOLDER_ID = process.env.YC_FOLDER_ID; // Оставляем, если используется для x-folder-id или если modelUri в json не полный
@@ -18,11 +18,11 @@ export function setIamToken(token: string | null) {
 
 // Расширяемый словарь для хранения любых пользовательских данных
 export interface UserDataItem {
-  [key: string]: any;
+    [key: string]: any;
 }
 
 // Переименовываем и изменяем функцию для загрузки всех настроек из БД
-async function loadGptSettingsFromDb(promptType: string, iamToken?: string): Promise<Prompt | null> { 
+async function loadGptSettingsFromDb(promptType: string, iamToken?: string): Promise<Prompt | null> {
     try {
         const latestPromptSettings = await getLatestPromptByType(promptType, iamToken);
         if (latestPromptSettings) {
@@ -30,7 +30,7 @@ async function loadGptSettingsFromDb(promptType: string, iamToken?: string): Pro
         }
         console.warn(`No ${promptType} prompt settings found in DB, using fallback or defaults.`);
         // Можно вернуть объект с настройками по умолчанию, если это необходимо
-        return null; 
+        return null;
     } catch (error) {
         console.error('Failed to load GPT settings from DB:', JSON.stringify(error));
         return null;
@@ -56,7 +56,7 @@ export async function getYandexGPTResponse(
         text: string;
     }[],
     promptType: string,
-    userId: number
+    businessConnectionId: string
 ): Promise<{ text: string; totalUsage?: string } | null> {
     try {
         if (!currentIamToken) {
@@ -76,9 +76,9 @@ export async function getYandexGPTResponse(
             return { text: 'Ошибка: Не удалось загрузить настройки GPT из базы данных.' };
         }
 
-        const userData = await getBotClientData(userId);
+        const userData = await getUserDataByBusinessConnectionId(businessConnectionId);
         if (!userData) {
-            console.warn(`No user data found for userId: ${userId}. Proceeding without it.`);
+            console.warn(`No user data found for userId: ${businessConnectionId}. Proceeding without it.`);
         }
 
         const systemPromptText = formatSystemPrompt(gptSettings.promptText, userData?.profile || {});
@@ -95,7 +95,7 @@ export async function getYandexGPTResponse(
             messages: [
                 {
                     role: 'system',
-                    text: systemPromptText 
+                    text: systemPromptText
                 },
                 ...userMessages // Добавляем сообщения пользователя и ассистента
             ],
@@ -125,10 +125,10 @@ export async function getYandexGPTResponse(
                     };
                 }>;
                 usage: {
-                  inputTextTokens: string;
-                  completionTokens: string;
-                  totalTokens: string;
-              };
+                    inputTextTokens: string;
+                    completionTokens: string;
+                    totalTokens: string;
+                };
             };
         }
 
@@ -142,8 +142,8 @@ export async function getYandexGPTResponse(
         }
 
     } catch (error: any) {
-        console.error('Error getting Yandex GPT response:', error);
+        console.error('Error getting Yandex GPT response:', JSON.stringify(error));
         const errorMessage = error instanceof Error ? error.message : String(error);
-        return { text: `Ошибка: ${errorMessage}`, totalUsage: undefined };
+        return { text: `Ошибка: ${errorMessage} ${businessConnectionId}`, totalUsage: undefined };
     }
 }

@@ -18,13 +18,13 @@ async function ensureChatsTableExists(iamToken?: string): Promise<void> {
 			'chats',
 			new TableDescription()
 			  .withColumn(new Column('chatId', Types.INT64))
-			  .withColumn(new Column('messageId', Types.UTF8))
-			  .withColumn(new Column('userId', Types.INT64))
+			  .withColumn(new Column('messageId', Types.INT64))
+			  .withColumn(new Column('business_connection_id', Types.UTF8))
 			  .withColumn(new Column('message', Types.UTF8))
 			  .withColumn(new Column('timestamp', Types.TIMESTAMP))
 			  .withColumn(new Column('type', Types.UTF8))
 			  .withColumn(new Column('answered', Types.BOOL))
-			  .withPrimaryKeys('chatId', 'messageId', 'userId')
+			  .withPrimaryKeys('chatId', 'messageId', 'business_connection_id')
 		  );
 		  logger.info("Table 'chats' created successfully.");
 		}

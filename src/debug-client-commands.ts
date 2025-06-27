@@ -1,5 +1,6 @@
 import { Bot, Context } from "grammy";
 import { clearChatMessages, getLastChatMessages } from "./ydb";
+import { getBusinessConnectionIdByUserId, getUserIdByBusinessConnectionId } from "./users";
 
 export async function debugClientCommands(bot: Bot) {
 	bot.hears(/^:(\w+)\s*(.*)$/i, async (ctx) => {
@@ -68,7 +69,7 @@ export async function debugClientCommands(bot: Bot) {
 	  // В вашем текущем getLastTenChatMessages iamToken опционален, 
 	  // но если бы он был обязателен, его нужно было бы получить здесь, 
 	  // например, из context в serverless-функции или другим способом.
-	  const messages = await getLastChatMessages(chatId, userId, n);
+	  const messages = await getLastChatMessages(chatId, await getBusinessConnectionIdByUserId(userId)||'', n);
   
 	  if (messages.length === 0) {
 		await ctx.reply('Сообщений в этом чате пока нет.');

@@ -1,4 +1,5 @@
 import { getDriver, Client, getClient, getLastChatMessages } from './ydb';
+import { getBusinessConnectionIdByUserId } from './users';
 import { InlineKeyboard } from 'grammy';
 import { Types } from 'ydb-sdk';
 import { getYandexGPTResponse } from './gpt';
@@ -13,20 +14,28 @@ export interface ClientChat {
  * @returns Массив уникальных chatId
  */
 export async function getClientChatIds(userId: number): Promise<number[]> {
+  // Сначала получаем business_connection_id по userId
+  const businessConnectionId = await getBusinessConnectionIdByUserId(userId);
+  
+  if (!businessConnectionId) {
+    console.warn(`No business connection found for user ${userId}`);
+    return [];
+  }
+  
   const currentDriver = await getDriver();
   
   try {
     const result = await currentDriver.tableClient.withSession(async (session) => {
       const query = `
-        DECLARE $userId AS Int64;
+        DECLARE $businessConnectionId AS Utf8;
         SELECT DISTINCT chatId
         FROM chats
-        WHERE userId = $userId
+        WHERE business_connection_id = $businessConnectionId
         ORDER BY chatId;
       `;
       
       const queryResult = await session.executeQuery(query, {
-        $userId: { type: Types.INT64, value: { int64Value: userId } }
+        $businessConnectionId: { type: Types.UTF8, value: { textValue: businessConnectionId } }
       });
       
       const chatIds: number[] = [];
@@ -42,7 +51,7 @@ export async function getClientChatIds(userId: number): Promise<number[]> {
       return chatIds;
     });
     
-    console.info(`Found ${result.length} unique chat IDs for user ${userId}`);
+    console.info(`Found ${result.length} unique chat IDs for user ${userId} (business_connection_id: ${businessConnectionId})`);
     return result;
   } catch (error) {
     console.error('Failed to get client chat IDs:', JSON.stringify(error));
@@ -210,10 +219,26 @@ export function initializeClientsCommand(bot: any) {
   // Обработчик нажатий на кнопки клиентов
   bot.callbackQuery(/client_(.+)/, async (ctx: any) => {
     await ctx.answerCallbackQuery();
+    const userId = ctx.from?.id;
+    if (!userId) {
+      console.error('Cannot get user ID from context');
+      await ctx.reply('Ошибка: не удалось определить пользователя.');
+      return;
+    }
     const clientId = ctx.match[1];
-	const client = await getClient(Number(clientId));
-	
-	const historyMessages = await getLastChatMessages(Number(clientId), ctx.from.id, 50);
+    const client = await getClient(Number(clientId));
+    if (!client) {
+      console.error('Client not found with ID:', clientId);
+      await ctx.reply('Клиент не найден.');
+      return;
+    }
+    const businessConnectionId = await getBusinessConnectionIdByUserId(userId);
+	  if(!businessConnectionId){
+		console.error('Cannot get business connection ID from context');
+		await ctx.reply('Ошибка: не удалось определить вашу связь бизнес аккаунтом, напишите любое сообщение в @m2assist.');
+		return;
+	  }
+	const historyMessages = await getLastChatMessages(Number(clientId), businessConnectionId, 50);
             // Формируем только сообщения пользователя и ассистента для передачи в getYandexGPTResponse
 	const gptMessages = historyMessages.map((v) => ({
 		role: (v.type === 'client' ? 'user' : 'assistant') as 'user' | 'assistant',
@@ -226,24 +251,17 @@ export function initializeClientsCommand(bot: any) {
 		return;
 	}
 
-	const gptResponse = await getYandexGPTResponse(gptMessages, 'summary', ctx.from.id);
+	const gptResponse = await getYandexGPTResponse(gptMessages, 'summary', businessConnectionId);
 	
-	
-
     if (gptResponse && gptResponse.text && client) {
       let message = `*Информация о клиенте ${getClientDisplayName(client)}*\n\n`+`${gptResponse.text}`;
-
-    //   if (client.propertyInfo) {
-    //     message += `\n*Информация по объекту:*\n`;
-    //     if (client.propertyInfo.type) message += `  Тип: ${client.propertyInfo.type}\n`;
-    //     if (client.propertyInfo.requirements) message += `  Требования: ${client.propertyInfo.requirements}\n`;
-    //     if (client.propertyInfo.description) message += `  Описание: ${client.propertyInfo.description}\n`;
-    //     if (client.propertyInfo.price) message += `  Цена: ${client.propertyInfo.price}\n`;
-    //   }
 
       const keyboard = new InlineKeyboard();
       if (client.username) {
         keyboard.url(`Перейти в чат с ${client.first_name || client.username}`, `https://t.me/${client.username.startsWith('@') ? client.username.substring(1) : client.username}`);
+      } else {
+        // Для случаев без username - используем tg:// схему
+        keyboard.url(`Перейти в чат с ${client.first_name || 'пользователем'}`, `tg://user?id=${client.id}`);
       }
 
       if (keyboard.inline_keyboard.length > 0) {

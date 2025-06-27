@@ -393,6 +393,37 @@ export const migrations: Migration[] = [
         },
     },
     {
+        version: 11,
+        name: 'RecreateChatsTableWithNewStructure',
+        async up(driver: Driver, logger: Logger) {
+            logger.info(`Applying migration: RecreateChatsTableWithNewStructure`);
+
+            await driver.queryClient.do({ fn: async (session: QuerySession) => {
+                logger.info('Dropping old chats table...');
+                await session.execute({ text: 'DROP TABLE IF EXISTS chats;' });
+
+                logger.info('Creating new chats table with updated structure...');
+                await session.execute({ text: `
+                    CREATE TABLE chats (
+                        chatId Int64,
+                        messageId Int64,
+                        business_connection_id Utf8,
+                        message Utf8,
+                        timestamp Timestamp,
+                        type Utf8,
+                        answered Bool,
+                        PRIMARY KEY (chatId, messageId, business_connection_id)
+                    );
+                `});
+
+                logger.info('Migration RecreateChatsTableWithNewStructure applied successfully');
+            }}).catch((error) => {
+                logger.error('Failed to apply migration RecreateChatsTableWithNewStructure:', JSON.stringify(error));
+                throw error;
+            });
+        },
+    },
+    {
         version: 10,
         name: 'UpdateQuizStatesTableUserIdToInt64',
         async up(driver: Driver, logger: Logger) {
