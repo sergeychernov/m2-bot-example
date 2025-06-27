@@ -1,7 +1,8 @@
 import { Context, InlineKeyboard } from 'grammy';
-import { addBotClientData, getBotClientData, saveQuizState, loadQuizState, deleteQuizState, setMode, getMode } from './ydb';
+import { saveQuizState, loadQuizState, deleteQuizState, setMode, getMode } from './ydb';
 import { formatProfileMarkdownV2 } from './telegram-utils';
 import { bot } from './bot-instance';
+import { getUserDataByUserId, addUserData } from './users';
 
 export type QuizQuestion = {
   id: string;
@@ -38,8 +39,8 @@ export function createQuiz(quizConfig: QuizConfig) {
 
   async function saveUserFromState(ctx: Context, state: { answers: Record<string, any> }) {
     if (ctx.from) {
-      const userId = ctx.from.id;
-      const oldData = await getBotClientData(userId) || { profile: {} };
+      const userId = ctx.from.id
+      const oldData = await getUserDataByUserId(userId) || { profile: {} };
       const newData: Record<string, any> = { ...oldData.profile };
       for (const question of quizConfig.questions) {
         if (state.answers[question.id]) {
@@ -48,7 +49,7 @@ export function createQuiz(quizConfig: QuizConfig) {
       }
       try {
         const mode = await getMode(userId) || 'none';
-        await addBotClientData(userId, newData, mode);
+        await addUserData(userId, newData, mode);
       } catch (e) {
         console.log('Данные не удалось сохранить', e);
       }
@@ -124,7 +125,7 @@ export function createQuiz(quizConfig: QuizConfig) {
       }
     } catch (e) {
       console.error('Ошибка в sendQuestion:', e);
-      try { await ctx.reply('Произошла ошибка при отправке вопроса.'); } catch {}
+      try { await ctx.reply('Произошла ошибка при отправке вопроса.'); } catch { }
     }
   }
 
@@ -205,7 +206,7 @@ export function createQuiz(quizConfig: QuizConfig) {
       }
     } catch (e) {
       console.error('Ошибка в handleQuizText:', e);
-      try { await ctx.reply('Произошла ошибка при обработке вашего ответа.'); } catch {}
+      try { await ctx.reply('Произошла ошибка при обработке вашего ответа.'); } catch { }
     }
   }
 
@@ -255,7 +256,7 @@ export function createQuiz(quizConfig: QuizConfig) {
       }
     } catch (e) {
       console.error('Ошибка в handleQuizButton:', e);
-      try { await ctx.reply('Произошла ошибка при обработке ответа на кнопку.'); } catch {}
+      try { await ctx.reply('Произошла ошибка при обработке ответа на кнопку.'); } catch { }
     }
   }
 
@@ -275,7 +276,7 @@ export function createQuiz(quizConfig: QuizConfig) {
       await deleteQuizState(userId);
     } catch (e) {
       console.error('Ошибка в handleQuizExit:', e);
-      try { await ctx.reply('Произошла ошибка при выходе из квиза.'); } catch {}
+      try { await ctx.reply('Произошла ошибка при выходе из квиза.'); } catch { }
     }
   }
 
@@ -338,17 +339,19 @@ export function createQuiz(quizConfig: QuizConfig) {
         await ctx.api.editMessageReplyMarkup(
           ctx.chat.id,
           ctx.callbackQuery.message!.message_id,
-          { reply_markup: (() => {
-            const keyboard = new InlineKeyboard();
-            for (const option of currentQ.options || []) {
-              keyboard.text(
-                `${selected.includes(option) ? "✅" : "  "} ${option}`,
-                `multi_${currentQ.id}_${option}`
-              ).row();
-            }
-            keyboard.text("➡️ Готово", `multi_done_${currentQ.id}`);
-            return keyboard;
-          })() }
+          {
+            reply_markup: (() => {
+              const keyboard = new InlineKeyboard();
+              for (const option of currentQ.options || []) {
+                keyboard.text(
+                  `${selected.includes(option) ? "✅" : "  "} ${option}`,
+                  `multi_${currentQ.id}_${option}`
+                ).row();
+              }
+              keyboard.text("➡️ Готово", `multi_done_${currentQ.id}`);
+              return keyboard;
+            })()
+          }
         );
         await ctx.answerCallbackQuery();
       } else {
@@ -356,7 +359,7 @@ export function createQuiz(quizConfig: QuizConfig) {
       }
     } catch (e) {
       console.error('Ошибка в handleMultiSelect:', e);
-      try { await ctx.reply('Произошла ошибка при выборе варианта.'); } catch {}
+      try { await ctx.reply('Произошла ошибка при выборе варианта.'); } catch { }
     }
   }
 
@@ -490,9 +493,9 @@ function validateAnswer(answer: string, validation?: QuizQuestion['validation'])
 
 // чтобы продолжать квиз после паузы
 async function ensureQuizState(
-    ctx: Context,
-    quizStates: Record<string, { step: number; answers: Record<string, any>; allowExit: boolean }>,
-    loadQuizState: (userId: number) => Promise<{ step: number; answers: Record<string, any>; allowExit: boolean } | null>
+  ctx: Context,
+  quizStates: Record<string, { step: number; answers: Record<string, any>; allowExit: boolean }>,
+  loadQuizState: (userId: number) => Promise<{ step: number; answers: Record<string, any>; allowExit: boolean } | null>
 ): Promise<{ step: number; answers: Record<string, any>; allowExit: boolean } | null> {
   const userId = ctx.from?.id;
   if (!userId) return null;

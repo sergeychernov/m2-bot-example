@@ -4,12 +4,12 @@ import { handleBatchMessages } from './chat-handler';
 export async function processAllUnansweredChats() {
   const chats = await getChatsWithUnansweredMessages();
   await Promise.all(
-    chats.map(async ({ chatId, userId }) => {
-      const messages = await getUnansweredMessages(chatId, userId);
+    chats.map(async ({ chatId, business_connection_id }) => {
+      const messages = await getUnansweredMessages(chatId, business_connection_id);
       if (messages.length > 0) {
         const messageIds = messages.map(m => m.messageId);
-        await handleBatchMessages(chatId, userId, messageIds);
-        await markMessagesAsAnswered(chatId, userId, messageIds);
+        await handleBatchMessages(chatId, business_connection_id, messageIds);
+        await markMessagesAsAnswered(chatId, business_connection_id, messageIds);
       }
     })
   );

@@ -4,46 +4,49 @@ import {getYandexGPTResponse} from "./gpt";
 
 export async function chatHandler(ctx: Context, type: ChatMessageType) {
 	const chatId = ctx.chat?.id || 0;
-	const userId = ctx.from?.id || 0;
-	const messageId = ctx.message?.message_id?.toString() || '0';
+	const businessConnectionId = ctx.businessConnectionId || '';
+	const messageId = ctx.message?.message_id || 0;
 	const text = ctx.message?.text || '';
 
-	await addChatMessage(chatId, messageId, userId, text, type, false);
+	await addChatMessage(chatId, messageId, businessConnectionId, text, type);
 }
 
 export async function handleBatchMessages(
 	chatId: number,
-	userId: number,
-	messageIds: string[]
+	businessConnectionId: string,
+	messageIds: number[]
 ) {
 	try {
-		const historyMessages = await getLastChatMessages(chatId, userId, 20);
+		const historyMessages = await getLastChatMessages(chatId, businessConnectionId, 30);
 		const gptMessages = historyMessages.map((v: any) => ({
 			role: (v.type === 'client' ? 'user' : 'assistant') as 'user' | 'assistant',
 			text: v.message
 		}));
 
-		const gptResponse = await getYandexGPTResponse(gptMessages, 'base', userId);
+		const gptResponse = await getYandexGPTResponse(gptMessages, 'base', businessConnectionId);
 		if (gptResponse?.text) {
 			const { bot } = await import('./bot-instance');
 			const { imitateTypingBatch } = await import('./telegram-utils');
 			const textToReply = gptResponse.text;
 			const delay = textToReply.length * 200;
 			await imitateTypingBatch(bot, chatId, 0, delay);
-			const sentMessage = await bot.api.sendMessage(chatId, gptResponse.text);
+			
+			// Отправляем сообщение через business connection если он указан
+			const sentMessage = businessConnectionId 
+				? await bot.api.sendMessage(chatId, gptResponse.text, { business_connection_id: businessConnectionId })
+				: await bot.api.sendMessage(chatId, gptResponse.text);
 
 			await addChatMessage(
 				chatId,
-				sentMessage.message_id.toString(),
-				userId,
+				sentMessage.message_id,
+				businessConnectionId,
 				gptResponse.text,
-				'bot',
-				true
+				'bot'
 			);
 
-			await markMessagesAsAnswered(chatId, userId, messageIds);
+			await markMessagesAsAnswered(chatId, businessConnectionId, messageIds);
 		}
 	} catch (error) {
-		console.error('Batch processing error:', error);
-		}
+		console.error('Batch processing error:', JSON.stringify(error));
+	}
 }
