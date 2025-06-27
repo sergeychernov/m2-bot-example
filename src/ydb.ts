@@ -84,7 +84,7 @@ export async function addChatMessage(
         '$message': { type: Types.UTF8, value: { textValue: message } },
         '$timestamp': { type: Types.TIMESTAMP, value: { uint64Value: Date.now() * 1000 } },
         '$type': { type: Types.UTF8, value: { textValue: type } },
-        '$answered': { type: Types.BOOL, value: { boolValue: false } },
+        '$answered': { type: Types.BOOL, value: { boolValue: type === 'bot'?true:false } },
       });
     });
     logger.info(`Successfully added message for chatId: ${chatId}, messageId: ${messageId}, business_connection_id: ${business_connection_id}`);
