@@ -210,6 +210,30 @@ export async function handler(event: any, context?: any) {
                 ...update.business_message,
                 business_connection_id: update.business_message.business_connection_id
             };
+            
+            // Обработка голосового сообщения
+            if (update.message.voice) {
+                const fileId = update.message.voice.file_id;
+                console.log('Voice message received, file_id:', fileId);
+                
+                try {
+                    // Получаем информацию о файле
+                    const file = await bot.api.getFile(fileId);
+                    console.log('File info:', JSON.stringify(file));
+                    
+                    // Формируем URL для скачивания
+                    const fileUrl = `https://api.telegram.org/file/bot${process.env.BOT_TOKEN}/${file.file_path}`;
+                    console.log('File download URL:', fileUrl);
+                    
+                    // Здесь вы можете скачать файл или передать URL дальше для обработки
+                    // Например, для скачивания:
+                    // const response = await fetch(fileUrl);
+                    // const audioBuffer = await response.arrayBuffer();
+                    
+                } catch (error) {
+                    console.error('Error processing voice message:', error);
+                }
+            }
         }
 
         await bot.handleUpdate(update);
@@ -222,5 +246,4 @@ export async function handler(event: any, context?: any) {
         console.error(`Error message: ${JSON.stringify(errorMessage)}, Stack: ${JSON.stringify(errorStack)}`);
         return { statusCode: 500, body: `Error processing update: ${errorMessage}` };
     }
-  
 }
