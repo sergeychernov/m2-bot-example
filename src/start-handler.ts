@@ -1,7 +1,7 @@
 import { Bot, CommandContext, Context } from 'grammy';
 import { getMode, setMode, updateUserBusinessConnection } from './ydb';
 import { formatMarkdownV2Text, escapeMarkdownV2 } from './telegram-utils';
-import { startQuizWithFreshConfig, startQuizWithFreshConfigForUser } from './quiz-handler';
+import { startQuizWithFreshConfigForUser } from './quiz-handler';
 
 /**
  * Создает безопасное сообщение для MarkdownV2 с готовым форматированием
