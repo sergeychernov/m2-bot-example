@@ -1,4 +1,4 @@
-import { getDriver, Client, getClient, getLastChatMessages } from './ydb';
+import { getDriver, Client, getClient, getLastChatMessages, getMode } from './ydb';
 import { getBusinessConnectionIdByUserId } from './users';
 import { InlineKeyboard } from 'grammy';
 import { Types } from 'ydb-sdk';
@@ -14,6 +14,10 @@ export interface ClientChat {
  * @returns Массив уникальных chatId
  */
 export async function getClientChatIds(userId: number): Promise<number[]> {
+  const mode = await getMode(userId);
+  if (mode === 'demo') {
+    return [userId];
+  }
   // Сначала получаем business_connection_id по userId
   const businessConnectionId = await getBusinessConnectionIdByUserId(userId);
   
@@ -225,20 +229,22 @@ export function initializeClientsCommand(bot: any) {
       await ctx.reply('Ошибка: не удалось определить пользователя.');
       return;
     }
-    const clientId = ctx.match[1];
-    const client = await getClient(Number(clientId));
+    const clientId = Number(ctx.match[1]);
+    const client = await getClient(clientId);
     if (!client) {
       console.error('Client not found with ID:', clientId);
       await ctx.reply('Клиент не найден.');
       return;
     }
-    const businessConnectionId = await getBusinessConnectionIdByUserId(userId);
-	  if(!businessConnectionId){
+    const businessConnectionId = userId === clientId?'':await getBusinessConnectionIdByUserId(userId);
+	  if(!businessConnectionId && userId != clientId){
 		console.error('Cannot get business connection ID from context');
 		await ctx.reply('Ошибка: не удалось определить вашу связь бизнес аккаунтом, напишите любое сообщение в @m2assist.');
 		return;
-	  }
-	const historyMessages = await getLastChatMessages(Number(clientId), businessConnectionId, 50);
+    }
+    
+    const historyMessages = await getLastChatMessages(clientId, businessConnectionId || '', 50);
+    console.log('client_', clientId, userId, businessConnectionId, historyMessages.length);
             // Формируем только сообщения пользователя и ассистента для передачи в getYandexGPTResponse
 	const gptMessages = historyMessages.map((v) => ({
 		role: (v.type === 'client' ? 'user' : 'assistant') as 'user' | 'assistant',
@@ -251,7 +257,7 @@ export function initializeClientsCommand(bot: any) {
 		return;
 	}
 
-	const gptResponse = await getYandexGPTResponse(gptMessages, 'summary', businessConnectionId);
+	const gptResponse = await getYandexGPTResponse(gptMessages, 'summary', businessConnectionId || '');
 	
     if (gptResponse && gptResponse.text && client) {
       let message = `*Информация о клиенте ${getClientDisplayName(client)}*\n\n`+`${gptResponse.text}`;
