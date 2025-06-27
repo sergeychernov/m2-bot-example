@@ -30,7 +30,11 @@ export async function handleBatchMessages(
 			const textToReply = gptResponse.text;
 			const delay = textToReply.length * 200;
 			await imitateTypingBatch(bot, chatId, 0, delay);
-			const sentMessage = await bot.api.sendMessage(chatId, gptResponse.text);
+			
+			// Отправляем сообщение через business connection если он указан
+			const sentMessage = businessConnectionId 
+				? await bot.api.sendMessage(chatId, gptResponse.text, { business_connection_id: businessConnectionId })
+				: await bot.api.sendMessage(chatId, gptResponse.text);
 
 			await addChatMessage(
 				chatId,
@@ -43,6 +47,6 @@ export async function handleBatchMessages(
 			await markMessagesAsAnswered(chatId, businessConnectionId, messageIds);
 		}
 	} catch (error) {
-		console.error('Batch processing error:', error);
-		}
+		console.error('Batch processing error:', JSON.stringify(error));
+	}
 }
