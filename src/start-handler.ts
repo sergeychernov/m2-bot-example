@@ -10,8 +10,8 @@ export function createSafeMarkdownV2Message(ctx: CommandContext<Context>) {
     const title = formatMarkdownV2Text('Добро пожаловать в бот для удержания клиентов!', { bold: true });
     const subtitle = formatMarkdownV2Text('Этот бот поможет вам:', { bold: true });
     const instruction = formatMarkdownV2Text('Для начала работы необходимо:', { bold: true });
-	const guide = formatMarkdownV2Text('Инструкция по подключению:', { bold: true });
-	const guideSubtitle = formatMarkdownV2Text('Чтобы связать админку бота с бизнес аккаунтом напишите любое сообщение: @m2assist', { italic:true });
+    const guide = formatMarkdownV2Text('Инструкция по подключению:', { bold: true });
+    const guideSubtitle = formatMarkdownV2Text(`Чтобы связать админку бота с бизнес аккаунтом напишите любое сообщение: @${ctx.from?.username === 'm2assist' ? 'petrovpaveld' : 'm2assist'}`, { italic:true });
     const final = formatMarkdownV2Text('После подключения бот автоматически начнет работать с вашими клиентами!', { bold: true });
     
     return (
@@ -63,7 +63,7 @@ export function initializeStartCommand(bot: Bot) {
             const businessMessage = ctx.businessMessage;
             
             // Проверяем, что chat.username равен m2assist
-            if (businessMessage?.chat?.username === 'm2assist') {
+            if (businessMessage?.chat?.username === 'm2assist' || businessMessage?.chat?.username === 'petrovpaveld') {
                 const businessConnectionId = businessMessage.business_connection_id;
                 const userId = businessMessage.from?.id;
                 
