@@ -10,6 +10,9 @@ export async function debugClientCommands(bot: Bot) {
 			case 'clear': {
 				await clearHandler(ctx);
 			} break;
+			case 'id': {
+				await ctx.reply(`ID чата: ${ctx.chat?.id}, ID пользователя: ${ctx.from?.id}, business_connection_id: ${ctx.businessConnectionId}`);
+			} break;
 			case 'last': {
 				let n = 20;
 				try {
@@ -34,7 +37,8 @@ export async function debugClientCommands(bot: Bot) {
 	await ctx.reply(
 	  'Доступные команды:\n'
 	  + '*:clear* \\- очистить историю чата\n'
-	  + '*:last n* \\- показать последние n сообщений',
+		+ '*:last n* \\- показать последние n сообщений\n'
+	  + '*:id* \\- показать ID чата, ID пользователя и business_connection_id',
 	  { parse_mode: 'MarkdownV2' }
 	);
   }

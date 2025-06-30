@@ -1,3 +1,11 @@
+export interface TelegramVoice {
+    file_id: string;
+    file_unique_id: string;
+    duration: number;
+    mime_type?: string;
+    file_size?: number;
+}
+
 export async function imitateTypingBatch(
 	bot: any,
 	chatId: number,
