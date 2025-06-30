@@ -1,3 +1,4 @@
+import { Context } from 'grammy';
 import { bot } from './bot-instance';
 import { iam } from './iam';
 import { getUserIdByBusinessConnectionId } from './users';
@@ -124,7 +125,7 @@ export async function recognizeSpeech(audioBuffer: ArrayBuffer, mime_type: strin
     }
 }
 
-export async function handleVoiceMessage(fileId: string, chatId: number, mime_type:string, businessConnectionId?: string, context?: any) {
+export async function handleVoiceMessage(fileId: string, chatId: number, mime_type:string, businessConnectionId?: string, context?: Context) {
     try {
         // Получаем IAM токен
         const iamToken = iam(context);
@@ -156,16 +157,6 @@ export async function handleVoiceMessage(fileId: string, chatId: number, mime_ty
         const recognizedText = await recognizeSpeech(audioBuffer, mime_type, iamToken);
         
         if (recognizedText) {
-            // Отправляем распознанный текст обратно пользователю
-            // const replyText = `🎤 Распознанный текст: "${recognizedText}"`;
-            
-            // if (businessConnectionId) {
-            //     await bot.api.sendMessage(chatId, replyText, { 
-            //         business_connection_id: businessConnectionId 
-            //     });
-            // } else {
-            //     await bot.api.sendMessage(chatId, replyText);
-            // }
             
             return {
                 fileUrl,
