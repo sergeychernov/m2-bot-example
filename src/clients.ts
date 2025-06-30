@@ -257,7 +257,7 @@ export function initializeClientsCommand(bot: any) {
 		return;
 	}
 
-	const gptResponse = await getYandexGPTResponse(gptMessages, 'summary', businessConnectionId || '');
+	const gptResponse = await getYandexGPTResponse(gptMessages, 'summary', businessConnectionId || '', clientId);
 	
     if (gptResponse && gptResponse.text && client) {
       let message = `*Информация о клиенте ${getClientDisplayName(client)}*\n\n`+`${gptResponse.text}`;
