@@ -354,6 +354,38 @@ async function ensureSystemTableExists(iamToken?: string): Promise<void> {
   }
 }
 
+async function ensureBudgetTableExists(iamToken?: string): Promise<void> {
+	const currentDriver = await getDriver(iamToken);
+	try {
+		await currentDriver.tableClient.withSession(async (session) => {
+			try {
+				await session.describeTable('budget');
+				logger.info("Table 'budget' already exists.");
+			} catch (error: any) {
+				logger.info("Table 'budget' not found, creating...");
+				await session.createTable(
+					'budget',
+					new TableDescription()
+						.withColumn(new Column('chatId', Types.INT64))
+						.withColumn(new Column('business_connection_id', Types.UTF8))
+						.withColumn(new Column('inputTextTokens', Types.INT64))
+						.withColumn(new Column('completionTokens', Types.INT64))
+						.withColumn(new Column('totalTokens', Types.INT64))
+						.withColumn(new Column('alternatives', Types.INT64))
+						.withColumn(new Column('messages', Types.INT64))
+						.withColumn(new Column('promptType', Types.UTF8))
+						.withColumn(new Column('timestamp', Types.TIMESTAMP))
+						.withPrimaryKeys('chatId', 'business_connection_id','promptType', 'timestamp')
+				);
+				logger.info("Table 'budget' created successfully.");
+			}
+		});
+	} catch (error) {
+		logger.error('Failed to ensure budget table exists:', JSON.stringify(error));
+		throw error;
+	}
+}
+
 export async function setupDatabase() {
   try {
     console.log('Starting database setup...');
@@ -364,6 +396,7 @@ export async function setupDatabase() {
 	await ensureClientsTableExists();
 	await ensureQuizStatesTableExists();
 	await ensureQuizConfigsTableExists();
+	await ensureBudgetTableExists();
     await ensureMigrationsTableExists();
     await applyMigrations();
     console.log('Database setup completed successfully.');

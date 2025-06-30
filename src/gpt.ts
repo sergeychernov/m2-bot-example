@@ -1,7 +1,12 @@
 import {
     getLatestPromptByType,
-    Prompt
+    Prompt,
+    getDriver,
+    logger
 } from './ydb';
+import {
+  Types
+} from 'ydb-sdk';
 import { formatProfileMarkdownV2 } from "./telegram-utils";
 import { getUserDataByBusinessConnectionId } from './users';
 
@@ -50,13 +55,67 @@ export function formatSystemPrompt(basePrompt: string, userData: Record<string, 
 }
 
 // Обновленная функция getYandexGPTResponse
+// Функция для логирования бюджета
+async function logBudget(
+    chatId: number,
+    businessConnectionId: string,
+    inputTextTokens: number,
+    completionTokens: number,
+    totalTokens: number,
+    alternatives: number,
+    messages: number,
+    promptType: string,
+    iamToken?: string
+): Promise<void> {
+    const currentDriver = await getDriver(iamToken);
+    const tableName = 'budget';
+
+    const query = `
+        PRAGMA TablePathPrefix("${process.env.YDB_DATABASE}");
+        DECLARE $chatId AS Int64;
+        DECLARE $business_connection_id AS Utf8;
+        DECLARE $inputTextTokens AS Int64;
+        DECLARE $completionTokens AS Int64;
+        DECLARE $totalTokens AS Int64;
+        DECLARE $alternatives AS Int64;
+        DECLARE $messages AS Int64;
+        DECLARE $promptType AS Utf8;
+        DECLARE $timestamp AS Timestamp;
+
+        INSERT INTO ${tableName} (chatId, business_connection_id, inputTextTokens, completionTokens, totalTokens, alternatives, messages, promptType, timestamp)
+        VALUES ($chatId, $business_connection_id, $inputTextTokens, $completionTokens, $totalTokens, $alternatives, $messages, $promptType, $timestamp);
+    `;
+
+    try {
+        await currentDriver.tableClient.withSession(async (session) => {
+            const preparedQuery = await session.prepareQuery(query);
+            await session.executeQuery(preparedQuery, {
+                '$chatId': { type: Types.INT64, value: { int64Value: chatId } },
+                '$business_connection_id': { type: Types.UTF8, value: { textValue: businessConnectionId } },
+                '$inputTextTokens': { type: Types.INT64, value: { int64Value: inputTextTokens } },
+                '$completionTokens': { type: Types.INT64, value: { int64Value: completionTokens } },
+                '$totalTokens': { type: Types.INT64, value: { int64Value: totalTokens } },
+                '$alternatives': { type: Types.INT64, value: { int64Value: alternatives } },
+                '$messages': { type: Types.INT64, value: { int64Value: messages } },
+                '$promptType': { type: Types.UTF8, value: { textValue: promptType } },
+                '$timestamp': { type: Types.TIMESTAMP, value: { uint64Value: Date.now() * 1000 } },
+            });
+        });
+        logger.info(`Successfully logged budget for chatId: ${chatId}, businessConnectionId: ${businessConnectionId}`);
+    } catch (error) {
+        logger.error(`Error logging budget for chatId: ${chatId}, businessConnectionId: ${businessConnectionId}`, JSON.stringify(error));
+        throw error;
+    }
+}
+
 export async function getYandexGPTResponse(
     userMessages: {
         role: 'user' | 'assistant';
         text: string;
     }[],
     promptType: string,
-    businessConnectionId: string
+    businessConnectionId: string,
+    chatId: number,
 ): Promise<{ text: string; totalUsage?: string } | null> {
     try {
         if (!currentIamToken) {
@@ -135,6 +194,24 @@ export async function getYandexGPTResponse(
         const result = await response.json() as YandexGPTResponse;
 
         if (result.result && result.result.alternatives && result.result.alternatives.length > 0) {
+            // Логируем бюджет при успешном ответе
+            try {
+                await logBudget(
+                    chatId,
+                    businessConnectionId,
+                    parseInt(result.result.usage.inputTextTokens),
+                    parseInt(result.result.usage.completionTokens),
+                    parseInt(result.result.usage.totalTokens),
+                    result.result.alternatives.length, // длина массива alternatives
+                    userMessages.length, // длина userMessages
+                    promptType,
+                    currentIamToken
+                );
+            } catch (budgetError) {
+                logger.error('Failed to log budget:', JSON.stringify(budgetError));
+                // Не прерываем выполнение, если логирование бюджета не удалось
+            }
+            
             return { text: result.result.alternatives[0].message.text, totalUsage: result.result?.usage.totalTokens };
         } else {
             console.error('Unexpected response format:', result);
