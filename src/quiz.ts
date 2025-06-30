@@ -34,7 +34,6 @@ export type QuizConfig = {
 };
 
 export function createQuiz(quizConfig: QuizConfig) {
-  const quizStates: Record<string, { step: number; answers: Record<string, any>; allowExit: boolean }> = {};
   const { questions, quizDescription, exitText, successText, buttonLabels } = quizConfig;
 
   async function saveUserFromState(ctx: Context, state: { answers: Record<string, any> }) {
@@ -61,30 +60,26 @@ export function createQuiz(quizConfig: QuizConfig) {
     const userId = ctx.from.id;
 
     let state = await loadQuizState(userId);
-    if (state) {
-      quizStates[userId] = { ...state };
-    } else {
-      quizStates[userId] = { step: 0, answers: {}, allowExit };
+    if (!state) {
+      state = { step: 0, answers: {}, allowExit };
       await saveQuizState(userId, 0, {}, allowExit);
     }
     if (quizDescription) {
       await ctx.reply(quizDescription);
     }
-    await sendQuestion(ctx, quizStates[userId]);
+    await sendQuestion(ctx, state);
   }
 
   async function startQuizForUser(userId: number, allowExit = false) {
     let state = await loadQuizState(userId);
-    if (state) {
-      quizStates[userId] = { ...state };
-    } else {
-      quizStates[userId] = { step: 0, answers: {}, allowExit };
+    if (!state) {
+      state = { step: 0, answers: {}, allowExit };
       await saveQuizState(userId, 0, {}, allowExit);
     }
     if (quizDescription) {
       await bot.api.sendMessage(userId, quizDescription);
     }
-    await sendQuestionToUser(userId, quizStates[userId]);
+    await sendQuestionToUser(userId, state);
   }
 
   async function sendQuestion(ctx: Context, state: { step: number; answers: Record<string, any>; allowExit: boolean }) {
@@ -180,7 +175,7 @@ export function createQuiz(quizConfig: QuizConfig) {
         return;
       }
 
-      let state = await ensureQuizState(ctx, quizStates, loadQuizState);
+      let state = await ensureQuizState(ctx, loadQuizState);
       if (!state) return;
 
       const currentQ = questions[state.step];
@@ -199,7 +194,6 @@ export function createQuiz(quizConfig: QuizConfig) {
         } else {
           await showQuizResult(ctx, state.answers);
           await deleteQuizState(userId);
-          delete quizStates[userId];
         }
       } else if (currentQ.type === 'buttons' || currentQ.type === 'multi-select') {
         await ctx.reply('Пожалуйста, выберите ответ из предложенных вариантов с помощью кнопок.');
@@ -218,7 +212,7 @@ export function createQuiz(quizConfig: QuizConfig) {
         return;
       }
 
-      let state = await ensureQuizState(ctx, quizStates, loadQuizState);
+      let state = await ensureQuizState(ctx, loadQuizState);
       if (!state) return;
 
       const currentQ = questions[state.step];
@@ -252,7 +246,6 @@ export function createQuiz(quizConfig: QuizConfig) {
       } else {
         await showQuizResult(ctx, state.answers);
         await deleteQuizState(userId);
-        delete quizStates[userId];
       }
     } catch (e) {
       console.error('Ошибка в handleQuizButton:', e);
@@ -267,13 +260,11 @@ export function createQuiz(quizConfig: QuizConfig) {
       if (!userId) {
         return;
       }
-      delete quizStates[userId];
-      await ctx.answerCallbackQuery();
+      await deleteQuizState(userId);
       if (exitText) {
         await setMode(userId, 'none');
         await ctx.reply(exitText);
       }
-      await deleteQuizState(userId);
     } catch (e) {
       console.error('Ошибка в handleQuizExit:', e);
       try { await ctx.reply('Произошла ошибка при выходе из квиза.'); } catch { }
@@ -286,7 +277,7 @@ export function createQuiz(quizConfig: QuizConfig) {
       const userId = ctx.from?.id;
       if (!userId) return;
 
-      let state = await ensureQuizState(ctx, quizStates, loadQuizState);
+      let state = await ensureQuizState(ctx, loadQuizState);
       if (!state) return;
 
       const currentQ = questions[state.step];
@@ -318,7 +309,6 @@ export function createQuiz(quizConfig: QuizConfig) {
         } else {
           await showQuizResult(ctx, state.answers);
           await deleteQuizState(userId);
-          delete quizStates[userId];
         }
         return;
       } else if (selectMatch) {
@@ -494,22 +484,15 @@ function validateAnswer(answer: string, validation?: QuizQuestion['validation'])
 // чтобы продолжать квиз после паузы
 async function ensureQuizState(
   ctx: Context,
-  quizStates: Record<string, { step: number; answers: Record<string, any>; allowExit: boolean }>,
   loadQuizState: (userId: number) => Promise<{ step: number; answers: Record<string, any>; allowExit: boolean } | null>
 ): Promise<{ step: number; answers: Record<string, any>; allowExit: boolean } | null> {
   const userId = ctx.from?.id;
   if (!userId) return null;
 
-  let state = quizStates[userId];
+  let state = await loadQuizState(userId);
   if (!state) {
-    const dbState = await loadQuizState(userId);
-    if (dbState) {
-      state = { ...dbState };
-      quizStates[userId] = state;
-    } else {
-      await ctx.reply('Не удалось восстановить состояние квиза. Начните квиз заново командой /quiz.');
-      return null;
-    }
+    await ctx.reply('Не удалось восстановить состояние квиза. Начните квиз заново командой /quiz.');
+    return null;
   }
   return state;
 }
