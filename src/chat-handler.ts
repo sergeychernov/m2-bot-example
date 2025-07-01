@@ -30,23 +30,34 @@ export async function handleBatchMessages(
 			const textToReply = gptResponse.text;
 			const delay = textToReply.length * 200;
 			await imitateTypingBatch(bot, chatId, 0, delay, businessConnectionId);
-			
-			// Отправляем сообщение через business connection если он указан
-			const sentMessage = businessConnectionId 
-				? await bot.api.sendMessage(chatId, gptResponse.text, { business_connection_id: businessConnectionId })
-				: await bot.api.sendMessage(chatId, gptResponse.text);
 
-			await addChatMessage(
-				chatId,
-				sentMessage.message_id,
-				businessConnectionId,
-				gptResponse.text,
-				'bot'
-			);
+			try {
+				// Пытаемся отправить сообщение через business connection если он указан
+				const sentMessage = businessConnectionId
+					? await bot.api.sendMessage(chatId, gptResponse.text, { business_connection_id: businessConnectionId })
+					: await bot.api.sendMessage(chatId, gptResponse.text);
 
-			await markMessagesAsAnswered(chatId, businessConnectionId, messageIds);
+				await addChatMessage(
+					chatId,
+					sentMessage.message_id,
+					businessConnectionId,
+					gptResponse.text,
+					'bot'
+				);
+
+				await markMessagesAsAnswered(chatId, businessConnectionId, messageIds);
+
+			} catch (e: any) {
+				// если риелтор отключил бот после получения сообщения от клиента и ответ невозможно доставить
+				if (e.description?.includes('BUSINESS_PEER_INVALID')) {
+					await markMessagesAsAnswered(chatId, businessConnectionId, messageIds);
+					console.warn('Ответ не доставлен из-за того, что пользователь отключил бот, BUSINESS_PEER_INVALID');
+				} else {
+					throw e;
+				}
+			}
 		}
 	} catch (error) {
-		console.error('Batch processing error:', JSON.stringify(error));
+		console.error('Ошибка при ответе на сообщение от клиента:', JSON.stringify(error));
 	}
 }
