@@ -29,11 +29,11 @@ export async function handleBatchMessages(
 			const { imitateTypingBatch } = await import('./telegram-utils');
 			const textToReply = gptResponse.text;
 			const delay = textToReply.length * 200;
-			await imitateTypingBatch(bot, chatId, 0, delay);
+			await imitateTypingBatch(bot, chatId, 0, delay, businessConnectionId);
 
 			try {
 				// Пытаемся отправить сообщение через business connection если он указан
-				const sentMessage = businessConnectionId 
+				const sentMessage = businessConnectionId
 					? await bot.api.sendMessage(chatId, gptResponse.text, { business_connection_id: businessConnectionId })
 					: await bot.api.sendMessage(chatId, gptResponse.text);
 
