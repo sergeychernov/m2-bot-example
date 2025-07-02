@@ -24,7 +24,7 @@ export async function handleBatchMessages(
 		}));
 
 		const gptResponse = await getYandexGPTResponse(gptMessages, 'base', businessConnectionId, chatId);
-		if (gptResponse?.text) {
+		if (gptResponse?.text && !gptResponse.error) {
 			const { bot } = await import('./bot-instance');
 			const { imitateTypingBatch } = await import('./telegram-utils');
 			const textToReply = gptResponse.text;

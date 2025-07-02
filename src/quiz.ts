@@ -326,21 +326,19 @@ export function createQuiz(quizConfig: QuizConfig) {
         }
         state.answers[currentQ.id] = [...selected];
         await saveQuizState(userId, state.step, state.answers, state.allowExit);
-        await ctx.api.editMessageReplyMarkup(
+         const keyboard = new InlineKeyboard();
+          for (const option of currentQ.options || []) {
+            keyboard.text(
+              `${selected.includes(option) ? "✅" : "  "} ${option}`,
+              `multi_${currentQ.id}_${option}`
+            ).row();
+          }
+        keyboard.text("➡️ Готово", `multi_done_${currentQ.id}`);
+        await bot.api.editMessageReplyMarkup(
           ctx.chat.id,
           ctx.callbackQuery.message!.message_id,
           {
-            reply_markup: (() => {
-              const keyboard = new InlineKeyboard();
-              for (const option of currentQ.options || []) {
-                keyboard.text(
-                  `${selected.includes(option) ? "✅" : "  "} ${option}`,
-                  `multi_${currentQ.id}_${option}`
-                ).row();
-              }
-              keyboard.text("➡️ Готово", `multi_done_${currentQ.id}`);
-              return keyboard;
-            })()
+            reply_markup: keyboard?.inline_keyboard.length ? keyboard : undefined,
           }
         );
         await ctx.answerCallbackQuery();
@@ -358,7 +356,7 @@ export function createQuiz(quizConfig: QuizConfig) {
     if (!userId) {
       return;
     }
-    await setMode(userId, 'none');
+    await setMode(userId, 'idle');
     const profileForDisplay: Record<string, any> = {};
     for (const q of questions) {
       if (answers[q.id] !== undefined) {

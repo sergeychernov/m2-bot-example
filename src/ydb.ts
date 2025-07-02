@@ -457,7 +457,12 @@ export async function deleteQuizState(userId: number): Promise<void> {
   });
 }
 
-export type UserMode = 'demo' | 'quiz' | 'none' | 'start' | 'first-start';
+export type UserMode = 'none' // не определенный режим бота
+    | 'start'//стартовое сообщение, когда бот делится своими возможностями
+    | 'quiz'//режим опроса пользователя
+    | 'idle'// режим ожидания новых команд
+    | 'demo'// режим демонстрации
+    | 'activation';// режим связи админ чата и бизнес чата
 
 export async function getMode(userId: number, iamToken?: string): Promise<UserMode> {
   const currentDriver = await getDriver(iamToken);
@@ -474,9 +479,9 @@ export async function getMode(userId: number, iamToken?: string): Promise<UserMo
         const row = resultSets[0].rows[0];
         // Убедимся, что у row.items[0] есть значение, иначе вернем 'none'
         const modeValue = row.items![0].textValue;
-        return (modeValue || 'first-start') as UserMode;
+        return (modeValue || 'none') as UserMode;
       }
-      return 'first-start';
+      return 'none';
     });
   } catch (error) {
     logger.error(`Failed to get mode for user ${userId}:`, JSON.stringify(error));
