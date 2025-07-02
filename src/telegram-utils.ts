@@ -113,10 +113,3 @@ export function formatProfileMarkdownV2(userData: Record<string, any>): string {
     })
     .join('\n');
 }
-
-export type Mode = 'none' // не определенный режим бота
-    | 'start'//стартовое сообщение, когда бот делится своими возможностями
-    | 'quiz'//режим опроса пользователя
-    | 'idle'// режим ожидания новых команд
-    | 'demo'// режим демонстрации
-    | 'activation';// режим связи админ чата и бизнес чата
