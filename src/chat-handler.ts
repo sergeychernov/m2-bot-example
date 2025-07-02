@@ -6,9 +6,10 @@ export async function chatHandler(ctx: Context, type: ChatMessageType) {
 	const chatId = ctx.chat?.id || 0;
 	const businessConnectionId = ctx.businessConnectionId || '';
 	const messageId = ctx.message?.message_id || 0;
+	const repliedText = ctx.message?.reply_to_message?.text || '';
 	const text = ctx.message?.text || '';
 
-	await addChatMessage(chatId, messageId, businessConnectionId, text, type);
+	await addChatMessage(chatId, messageId, businessConnectionId, text, type, repliedText);
 }
 
 export async function handleBatchMessages(
