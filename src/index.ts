@@ -1,4 +1,4 @@
-import { initializeClientsCommand } from './clients';
+import { initializeClientsCommand } from './clients-command';
 import { setIamToken } from './gpt';
 import {
     ChatMessageType,
@@ -18,12 +18,13 @@ import { handleSettingsPost } from './settings.be'; // <<< Добавлен эт
 import { debugClientCommands } from './debug-client-commands';
 import { chatHandler } from './chat-handler';
 import { initializeQuiz } from './quiz-handler';
-import { initializeStartCommand } from './start-handler';
+import { initializeStartCommand } from './start-command';
 import { bot } from './bot-instance';
 import {processAllUnansweredChats} from "./process-unanswered-messages";
 import { handleVoiceMessage } from './voice-handler';
 import { TelegramVoice } from './telegram-utils';
 import { Context } from 'grammy';
+import { initializeActivateCommand } from './activate-command';
 
 // Глобальная переменная для отслеживания инициализации
 let botInitialized = false;
@@ -43,12 +44,14 @@ async function initializeBot() {
       { command: 'help', description: 'Показать справку' },
       { command: 'clients', description: 'Показать список клиентов' },
       { command: 'quiz', description: 'Пройти квиз' },
-      { command: 'demo', description: 'Демонстрация возможностей' }
+      { command: 'demo', description: 'Демонстрация возможностей' },
+      { command: 'activate', description: 'Привязать бизнес аккаунт к боту' }
     ]);
     console.log('Bot commands set.');
     // Команды /quiz и /start
     initializeStartCommand(bot);
     initializeQuiz(bot);
+    initializeActivateCommand(bot);
     botInitialized = true;
   } catch (error) {
     console.error('Failed to initialize bot or set commands:', error);

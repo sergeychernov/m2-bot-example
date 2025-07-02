@@ -259,7 +259,7 @@ export function initializeClientsCommand(bot: any) {
 
 	const gptResponse = await getYandexGPTResponse(gptMessages, 'summary', businessConnectionId || '', clientId);
 	
-    if (gptResponse && gptResponse.text && client) {
+    if (gptResponse && gptResponse.text && client && !gptResponse.error) {
       let message = `*Информация о клиенте ${getClientDisplayName(client)}*\n\n`+`${gptResponse.text}`;
 
       const keyboard = new InlineKeyboard();
