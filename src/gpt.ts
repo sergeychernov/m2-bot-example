@@ -116,7 +116,7 @@ export async function getYandexGPTResponse(
     promptType: string,
     businessConnectionId: string,
     chatId: number,
-): Promise<{ text: string; totalUsage?: string } | null> {
+): Promise<{ text: string; totalUsage?: string; error?: boolean } | null> {
     try {
         if (!currentIamToken) {
             console.error('IAM token not available');
@@ -173,7 +173,7 @@ export async function getYandexGPTResponse(
         if (!response.ok) {
             const errorText = await response.text();
             console.error('YandexGPT API error:', response.status, errorText);
-            return { text: `Ошибка API: ${response.status} - ${errorText}`, totalUsage: undefined };
+            return { text: `Ошибка API: ${response.status} - ${errorText}`, totalUsage: undefined, error: true };
         }
 
         interface YandexGPTResponse {
