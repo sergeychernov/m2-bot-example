@@ -1,5 +1,5 @@
 import { Context } from 'grammy';
-import {addChatMessage, ChatMessageType, getLastChatMessages, markMessagesAsAnswered} from './ydb';
+import {addChatMessage, ChatMessageType, getLastChatMessages, markMessagesAsAnswered, getUnansweredMessages} from './ydb';
 import {getYandexGPTResponse} from "./gpt";
 
 export async function chatHandler(ctx: Context, type: ChatMessageType) {
@@ -30,6 +30,16 @@ export async function handleBatchMessages(
 			const textToReply = gptResponse.text;
 			const delay = textToReply.length * 200;
 			await imitateTypingBatch(bot, chatId, 0, delay, businessConnectionId);
+
+			const currentUnanswered = await getUnansweredMessages(chatId, businessConnectionId);
+			const currentIds = currentUnanswered.map((m: any) => m.messageId);
+			if (
+				currentIds.length > messageIds.length ||
+				!messageIds.every(id => currentIds.includes(id))
+			) {
+				console.log('Появились новые сообщения во время имитации тайпинга, обработка прервана');
+				return;
+			}
 
 			try {
 				// Пытаемся отправить сообщение через business connection если он указан
