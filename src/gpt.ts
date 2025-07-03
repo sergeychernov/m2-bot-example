@@ -140,6 +140,11 @@ interface GeminiSuccessResponse {
             }[];
         };
     }[];
+    usageMetadata?: {
+        promptTokenCount: number;
+        candidatesTokenCount: number;
+        totalTokenCount: number;
+    };
 }
 
 async function getGeminiResponse(
@@ -154,10 +159,17 @@ async function getGeminiResponse(
 
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${gptSettings.model}:generateContent?key=${GEMINI_API_KEY}`;
 
-    const contents: GeminiContent[] = userMessages.map(msg => ({
-        role: msg.role === 'user' ? 'user' : 'model',
-        parts: [{ text: msg.text }]
-    }));
+    const contents: GeminiContent[] = [];
+    for (const msg of userMessages) {
+        const role = msg.role === 'user' ? 'user' : 'model';
+        const lastContent = contents.length > 0 ? contents[contents.length - 1] : null;
+
+        if (lastContent && lastContent.role === role) {
+            lastContent.parts.push({ text: msg.text });
+        } else {
+            contents.push({ role, parts: [{ text: msg.text }] });
+        }
+    }
 
     const body = {
         contents: contents,
@@ -183,6 +195,7 @@ async function getGeminiResponse(
             body: JSON.stringify(body),
             agent,
         });
+        console.log('getGeminiResponse.body', JSON.stringify(body));
 
         if (!response.ok) {
             const errorData = await response.json() as GeminiErrorResponse;
@@ -194,13 +207,11 @@ async function getGeminiResponse(
         const data = await response.json() as GeminiSuccessResponse;
 
         const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
-        // The REST API response for v1beta doesn't directly provide token counts in the same way.
-        // We can make another call to countTokens or leave them as 0 for now.
-        // For simplicity, I'll set them to 0.
-        const promptTokenCount = 0; // data.usageMetadata?.promptTokenCount || 0;
-        const totalTokenCount = 0; // data.usageMetadata?.totalTokenCount || 0;
+        const promptTokenCount = data.usageMetadata?.promptTokenCount || 0;
+        const candidatesTokenCount = data.usageMetadata?.candidatesTokenCount || 0;
+        const totalTokenCount = data.usageMetadata?.totalTokenCount || 0;
 
-        return { text, inputTextTokens: promptTokenCount, completionTokens: totalTokenCount - promptTokenCount, totalTokens: totalTokenCount };
+        return { text, inputTextTokens: promptTokenCount, completionTokens: candidatesTokenCount, totalTokens: totalTokenCount };
 
     } catch (error: any) {
         const errorMessage = error instanceof Error ? error.message : String(error);
