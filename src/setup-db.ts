@@ -166,6 +166,7 @@ async function ensureQuizStatesTableExists(iamToken?: string): Promise<void> {
 						.withColumn(new Column('step', Types.INT32))
 						.withColumn(new Column('answers', Types.JSON))
 						.withColumn(new Column('allowExit', Types.BOOL))
+						.withColumn(new Column('lastMessageId', Types.INT64))
 						.withPrimaryKeys('userId')
 				);
 				logger.info("Table 'quiz_states' created successfully.");

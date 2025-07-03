@@ -390,7 +390,8 @@ export async function saveQuizState(
   userId: number,
   step: number,
   answers: Record<string, any>,
-  allowExit: boolean
+  allowExit: boolean,
+  lastMessageId: number = 0
 ): Promise<void> {
   const currentDriver = await getDriver();
   await currentDriver.tableClient.withSession(async (session) => {
@@ -399,26 +400,28 @@ export async function saveQuizState(
       DECLARE $step AS Int32;
       DECLARE $answers AS Json;
       DECLARE $allowExit AS Bool;
-      UPSERT INTO quiz_states (userId, step, answers, allowExit)
-      VALUES ($userId, $step, $answers, $allowExit);
+      DECLARE $lastMessageId AS Int64;
+      UPSERT INTO quiz_states (userId, step, answers, allowExit, lastMessageId)
+      VALUES ($userId, $step, $answers, $allowExit, $lastMessageId);
     `;
     await session.executeQuery(query, {
       $userId: { type: Types.INT64, value: { int64Value: userId } },
       $step: { type: Types.INT32, value: { int32Value: step } },
       $answers: { type: Types.JSON, value: { textValue: JSON.stringify(answers) } },
       $allowExit: { type: Types.BOOL, value: { boolValue: allowExit } },
+      $lastMessageId: { type: Types.INT64, value: { int64Value: lastMessageId ?? 0 } },
     });
   });
 }
 
 export async function loadQuizState(
   userId: number,
-): Promise<{ step: number; answers: Record<string, any>; allowExit: boolean } | null> {
+): Promise<{ step: number; answers: Record<string, any>; allowExit: boolean; lastMessageId: number } | null> {
   const currentDriver = await getDriver();
   return await currentDriver.tableClient.withSession(async (session) => {
     const query = `
       DECLARE $userId AS Int64;
-      SELECT step, answers, allowExit FROM quiz_states
+      SELECT step, answers, allowExit, lastMessageId FROM quiz_states
       WHERE userId = $userId
       LIMIT 1;
     `;
@@ -431,12 +434,18 @@ export async function loadQuizState(
         row.items &&
         typeof row.items[0]?.int32Value === 'number' &&
         typeof row.items[1]?.textValue === 'string' &&
-        typeof row.items[2]?.boolValue === 'boolean'
+        typeof row.items[2]?.boolValue === 'boolean' &&
+        typeof row.items[3]?.int64Value !== 'undefined'
       ) {
         return {
           step: row.items[0].int32Value,
           answers: JSON.parse(row.items[1].textValue),
           allowExit: row.items[2].boolValue,
+          lastMessageId: typeof row.items[3].int64Value === 'number'
+            ? row.items[3].int64Value
+            : (typeof row.items[3].int64Value === 'object' && row.items[3].int64Value?.toNumber)
+              ? row.items[3].int64Value.toNumber()
+              : 0,
         };
       }
     }

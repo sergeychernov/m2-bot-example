@@ -61,8 +61,8 @@ export function createQuiz(quizConfig: QuizConfig) {
 
     let state = await loadQuizState(userId);
     if (!state) {
-      state = { step: 0, answers: {}, allowExit };
-      await saveQuizState(userId, 0, {}, allowExit);
+      state = { step: 0, answers: {}, allowExit, lastMessageId: 0 };
+      await saveQuizState(userId, 0, {}, allowExit, 0);
     }
     if (quizDescription) {
       await ctx.reply(quizDescription);
@@ -73,8 +73,8 @@ export function createQuiz(quizConfig: QuizConfig) {
   async function startQuizForUser(userId: number, allowExit = false) {
     let state = await loadQuizState(userId);
     if (!state) {
-      state = { step: 0, answers: {}, allowExit };
-      await saveQuizState(userId, 0, {}, allowExit);
+      state = { step: 0, answers: {}, allowExit, lastMessageId: 0 };
+      await saveQuizState(userId, 0, {}, allowExit, 0);
     }
     if (quizDescription) {
       await bot.api.sendMessage(userId, quizDescription);
@@ -82,7 +82,7 @@ export function createQuiz(quizConfig: QuizConfig) {
     await sendQuestionToUser(userId, state);
   }
 
-  async function sendQuestion(ctx: Context, state: { step: number; answers: Record<string, any>; allowExit: boolean }) {
+  async function sendQuestion(ctx: Context, state: { step: number; answers: Record<string, any>; allowExit: boolean; lastMessageId?: number }) {
     try {
       const currentQ = questions[state.step];
       if (!currentQ) return;
@@ -97,7 +97,7 @@ export function createQuiz(quizConfig: QuizConfig) {
         keyboard = new InlineKeyboard();
         for (const option of currentQ.options || []) {
           keyboard.text(
-            `${selected.includes(option) ? "✅" : "  "} ${option}`,
+            `${selected.includes(option) ? "✅" : "  " } ${option}`,
             `multi_${currentQ.id}_${option}`
           ).row();
         }
@@ -110,13 +110,27 @@ export function createQuiz(quizConfig: QuizConfig) {
         reply_markup: keyboard?.inline_keyboard.length ? keyboard : undefined,
         parse_mode: 'HTML' as const
       };
+      let sentMessage;
+      if (currentQ.type === 'multi-select' && state.lastMessageId && ctx.chat) {
+        try {
+          await ctx.api.deleteMessage(ctx.chat.id, state.lastMessageId);
+        } catch {}
+        state.lastMessageId = 0;
+        await saveQuizState(ctx.from!.id, state.step, state.answers, state.allowExit, 0);
+      }
       if (currentQ.imageUrl) {
-        await ctx.replyWithPhoto(currentQ.imageUrl, {
+        sentMessage = await ctx.replyWithPhoto(currentQ.imageUrl, {
           caption: currentQ.question,
           ...messageOptions,
         });
       } else {
-        await ctx.reply(currentQ.question, messageOptions);
+        sentMessage = await ctx.reply(currentQ.question, messageOptions);
+      }
+      if (currentQ.type === 'multi-select') {
+        state.lastMessageId = sentMessage.message_id;
+        await saveQuizState(ctx.from!.id, state.step, state.answers, state.allowExit, state.lastMessageId);
+      } else {
+        await saveQuizState(ctx.from!.id, state.step, state.answers, state.allowExit, state.lastMessageId ?? 0);
       }
     } catch (e) {
       console.error('Ошибка в sendQuestion:', e);
@@ -280,7 +294,9 @@ export function createQuiz(quizConfig: QuizConfig) {
       let state = await ensureQuizState(ctx, loadQuizState);
       if (!state) return;
 
-      const currentQ = questions[state.step];
+      const stateWithMsg = state as typeof state & { lastMessageId?: number };
+
+      const currentQ = questions[stateWithMsg.step];
       if (currentQ.type !== 'multi-select') {
         await ctx.answerCallbackQuery();
         return;
@@ -289,61 +305,55 @@ export function createQuiz(quizConfig: QuizConfig) {
       if (!data) return;
       const doneMatch = data.match(/^multi_done_(.+)$/);
       const selectMatch = data.match(/^multi_(.+?)_(.+)$/);
+      
       if (doneMatch) {
         const questionId = doneMatch[1];
         if (currentQ.id !== questionId) {
           await ctx.answerCallbackQuery();
           return;
         }
-        let selected: string[] = Array.isArray(state.answers[currentQ.id]) ? state.answers[currentQ.id] as string[] : [];
+        let selected: string[] = Array.isArray(stateWithMsg.answers[currentQ.id]) ? stateWithMsg.answers[currentQ.id] as string[] : [];
         if (selected.length === 0) {
           await ctx.answerCallbackQuery({ text: "Выберите хотя бы один вариант!" });
           return;
         }
-        state.step += 1;
-        await saveUserFromState(ctx, state);
-        await saveQuizState(userId, state.step, state.answers, state.allowExit);
+        stateWithMsg.step += 1;
+        await saveUserFromState(ctx, stateWithMsg);
+        await saveQuizState(userId, stateWithMsg.step, stateWithMsg.answers, stateWithMsg.allowExit, stateWithMsg.lastMessageId ?? 0);
         await ctx.answerCallbackQuery();
-        if (state.step < questions.length) {
-          await sendQuestion(ctx, state);
+        if (stateWithMsg.step < questions.length) {
+          await sendQuestion(ctx, stateWithMsg);
         } else {
-          await showQuizResult(ctx, state.answers);
+          await showQuizResult(ctx, stateWithMsg.answers);
           await deleteQuizState(userId);
         }
         return;
       } else if (selectMatch) {
+        if (stateWithMsg.lastMessageId) {
+          try {
+            await ctx.api.deleteMessage(ctx.chat.id, stateWithMsg.lastMessageId);
+          } catch (e) {
+            console.log(e);
+          }
+          stateWithMsg.lastMessageId = 0;
+          await saveQuizState(userId, stateWithMsg.step, stateWithMsg.answers, stateWithMsg.allowExit, 0);
+        }
         const questionId = selectMatch[1];
         const option = selectMatch[2];
         if (currentQ.id !== questionId) {
           await ctx.answerCallbackQuery();
           return;
         }
-        let selected: string[] = Array.isArray(state.answers[currentQ.id]) ? state.answers[currentQ.id] as string[] : [];
+        let selected: string[] = Array.isArray(stateWithMsg.answers[currentQ.id]) ? stateWithMsg.answers[currentQ.id] as string[] : [];
         if (selected.includes(option)) {
           selected = selected.filter(o => o !== option);
         } else {
           selected.push(option);
         }
-        state.answers[currentQ.id] = [...selected];
-        await saveQuizState(userId, state.step, state.answers, state.allowExit);
-        await ctx.api.editMessageReplyMarkup(
-          ctx.chat.id,
-          ctx.callbackQuery.message!.message_id,
-          {
-            reply_markup: (() => {
-              const keyboard = new InlineKeyboard();
-              for (const option of currentQ.options || []) {
-                keyboard.text(
-                  `${selected.includes(option) ? "✅" : "  "} ${option}`,
-                  `multi_${currentQ.id}_${option}`
-                ).row();
-              }
-              keyboard.text("➡️ Готово", `multi_done_${currentQ.id}`);
-              return keyboard;
-            })()
-          }
-        );
+        stateWithMsg.answers[currentQ.id] = [...selected];
+        await saveQuizState(userId, stateWithMsg.step, stateWithMsg.answers, stateWithMsg.allowExit, stateWithMsg.lastMessageId ?? 0);
         await ctx.answerCallbackQuery();
+        await sendQuestion(ctx, stateWithMsg);
       } else {
         await ctx.answerCallbackQuery();
       }
@@ -484,8 +494,8 @@ function validateAnswer(answer: string, validation?: QuizQuestion['validation'])
 // чтобы продолжать квиз после паузы
 async function ensureQuizState(
   ctx: Context,
-  loadQuizState: (userId: number) => Promise<{ step: number; answers: Record<string, any>; allowExit: boolean } | null>
-): Promise<{ step: number; answers: Record<string, any>; allowExit: boolean } | null> {
+  loadQuizState: (userId: number) => Promise<{ step: number; answers: Record<string, any>; allowExit: boolean; lastMessageId: number } | null>
+): Promise<{ step: number; answers: Record<string, any>; allowExit: boolean; lastMessageId: number } | null> {
   const userId = ctx.from?.id;
   if (!userId) return null;
 
@@ -494,5 +504,10 @@ async function ensureQuizState(
     await ctx.reply('Не удалось восстановить состояние квиза. Начните квиз заново командой /quiz.');
     return null;
   }
+
+  if (typeof state.lastMessageId !== 'number') {
+    state.lastMessageId = 0;
+  }
+
   return state;
 }
