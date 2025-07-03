@@ -191,7 +191,7 @@ export interface ChatMessage {
   timestamp: Date;
   type: ChatMessageType;
   answered: boolean;
-  replied_message: string; // теперь всегда строка
+  replied_message: string;
 }
 
 export interface Prompt {
