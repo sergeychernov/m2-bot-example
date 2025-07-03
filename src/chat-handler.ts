@@ -1,6 +1,6 @@
 import { Context } from 'grammy';
 import {addChatMessage, ChatMessageType, getLastChatMessages, markMessagesAsAnswered} from './ydb';
-import {getYandexGPTResponse} from "./gpt";
+import {getGPTResponse} from "./gpt";
 
 export async function chatHandler(ctx: Context, type: ChatMessageType) {
 	const chatId = ctx.chat?.id || 0;
@@ -23,7 +23,7 @@ export async function handleBatchMessages(
 			text: v.message
 		}));
 
-		const gptResponse = await getYandexGPTResponse(gptMessages, 'base', businessConnectionId, chatId);
+		const gptResponse = await getGPTResponse(gptMessages, 'base', businessConnectionId, chatId);
 		if (gptResponse?.text && !gptResponse.error) {
 			const { bot } = await import('./bot-instance');
 			const { imitateTypingBatch } = await import('./telegram-utils');
