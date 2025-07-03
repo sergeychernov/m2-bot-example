@@ -19,10 +19,18 @@ export async function handleBatchMessages(
 ) {
 	try {
 		const historyMessages = await getLastChatMessages(chatId, businessConnectionId, 30);
-		const gptMessages = historyMessages.map((v: any) => ({
-			role: (v.type === 'client' ? 'user' : 'assistant') as 'user' | 'assistant',
-			text: v.message
-		}));
+		const gptMessages = historyMessages.map((v: any) => {
+			if (v.replied_message) {
+				return {
+					role: (v.type === 'client' ? 'user' : 'assistant') as 'user' | 'assistant',
+					text: `Пользователь ответил на сообщение "${v.message}": ${v.replied_message}`
+				}
+			}
+			return {
+				role: (v.type === 'client' ? 'user' : 'assistant') as 'user' | 'assistant',
+				text: v.message
+			}
+		});
 
 		const gptResponse = await getYandexGPTResponse(gptMessages, 'base', businessConnectionId, chatId);
 		if (gptResponse?.text) {
