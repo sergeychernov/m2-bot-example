@@ -441,11 +441,7 @@ export async function loadQuizState(
           step: row.items[0].int32Value,
           answers: JSON.parse(row.items[1].textValue),
           allowExit: row.items[2].boolValue,
-          lastMessageId: typeof row.items[3].int64Value === 'number'
-            ? row.items[3].int64Value
-            : (typeof row.items[3].int64Value === 'object' && row.items[3].int64Value?.toNumber)
-              ? row.items[3].int64Value.toNumber()
-              : 0,
+          lastMessageId: Number(row.items[3].int64Value) || 0,
         };
       }
     }
