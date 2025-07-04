@@ -2,13 +2,14 @@ import {
     getLatestPromptByType,
     Prompt,
     getDriver,
-    logger
+    logger,
+    getMode
 } from './ydb';
 import {
   Types
 } from 'ydb-sdk';
 import { formatProfileMarkdownV2 } from "./telegram-utils";
-import { getUserDataByBusinessConnectionId } from './users';
+import { getUserDataByBusinessConnectionId, getUserDataByUserId } from './users';
 import fetch from 'node-fetch';
 import { SocksProxyAgent } from 'socks-proxy-agent';
 
@@ -301,7 +302,7 @@ type GPTResponse = {
     completionTokens: number;
     totalTokens: number;
     error?: boolean;
-    
+
 }
 
 export async function getGPTResponse(
@@ -325,9 +326,16 @@ export async function getGPTResponse(
             return { text: 'Ошибка: Не удалось загрузить настройки GPT из базы данных.', error: true, inputTextTokens: 0, completionTokens: 0, totalTokens: 0  };
         }
 
-        const userData = await getUserDataByBusinessConnectionId(businessConnectionId);
+        let mode = await getMode(chatId);
+        let userData = null;
+        if (businessConnectionId) {
+            userData = await getUserDataByBusinessConnectionId(businessConnectionId);
+        }
+        if (!userData && mode === 'demo' && chatId) {
+            userData = await getUserDataByUserId(chatId);
+        }
         if (!userData) {
-            console.warn(`No user data found for userId: ${businessConnectionId}. Proceeding without it.`);
+            console.warn(`No user data found for businessConnectionId: ${businessConnectionId} or userId: ${chatId}. Proceeding without it.`);
         }
 
         const systemPromptText = formatSystemPrompt(gptSettings.promptText, userData?.profile || {});
@@ -340,7 +348,7 @@ export async function getGPTResponse(
         }
 
         if (response && response.text && !response.error) {
-            
+
                 try {
                     // Assuming you can get token counts from somewhere for Yandex
                     // This part needs adjustment if you can't get the token counts before this call

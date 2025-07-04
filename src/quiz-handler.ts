@@ -11,18 +11,10 @@ export function initializeQuiz(bot: Bot) {
             return;
         }
         await setMode(userId, 'quiz');
-        await startQuizWithFreshConfig(ctx, true);
+        if (typeof ctx.from?.id === 'number') {
+            await startQuizWithFreshConfig(ctx.from.id, true);
+        }
     });
-
-    // bot.command('start', async (ctx) => {
-    //     await resetQuizStateForUser(ctx);
-    //     const userId = ctx.from?.id?.toString();
-    //     if (!userId) {
-    //         return;
-    //     }
-    //     await setMode(userId, 'quiz');
-    //     await startQuizWithFreshConfig(ctx, false);
-    // });
 
     bot.on('message:text', async (ctx, next) => {
         const userId = ctx.from?.id;
@@ -83,22 +75,7 @@ export async function resetQuizStateForUser(ctx: Context) {
     }
 }
 
-export async function startQuizWithFreshConfig(ctx: any, allowExit = false) {
-    try {
-        const quizConfig = await loadQuizConfigFromDb();
-        if (!quizConfig) {
-            await ctx.reply('❌ Квиз не настроен');
-            return;
-        }
-        const quiz = createQuiz(quizConfig);
-        await quiz.startQuiz(ctx, allowExit);
-    } catch (error) {
-        console.error('Error starting quiz with fresh config:', error);
-        await ctx.reply('❌ Ошибка при запуске квиза');
-    }
-}
-
-export async function startQuizWithFreshConfigForUser(userId: number, allowExit = false) {
+export async function startQuizWithFreshConfig(userId: number, allowExit = false) {
     if (!userId || typeof userId !== 'number') {
         console.error('Invalid userId provided to startQuizWithFreshConfigForUser:', userId);
         return;
@@ -111,7 +88,7 @@ export async function startQuizWithFreshConfigForUser(userId: number, allowExit 
             return;
         }
         const quiz = createQuiz(quizConfig);
-        await quiz.startQuizForUser(userId, allowExit);
+        await quiz.startQuiz(userId, allowExit);
     } catch (error) {
         console.error('Error starting quiz with fresh config for user:', JSON.stringify(error));
         await bot.api.sendMessage(userId, '❌ Ошибка при запуске квиза');
