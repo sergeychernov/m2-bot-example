@@ -53,6 +53,7 @@ export async function addChatMessage(
   business_connection_id: string, // Заменено userId на business_connection_id
   message: string,
   type: ChatMessageType,
+  repliedText?: string,
   iamToken?: string
 ): Promise<void> {
   const currentDriver = await getDriver(iamToken);
@@ -67,9 +68,10 @@ export async function addChatMessage(
     DECLARE $timestamp AS Timestamp;
     DECLARE $type AS Utf8;
     DECLARE $answered AS Bool;
+    DECLARE $replied_message AS Utf8;
 
-    UPSERT INTO ${tableName} (chatId, messageId, business_connection_id, message, timestamp, type, answered)
-    VALUES ($chatId, $messageId, $business_connection_id, $message, $timestamp, $type, $answered);
+    UPSERT INTO ${tableName} (chatId, messageId, business_connection_id, message, timestamp, type, answered, replied_message)
+    VALUES ($chatId, $messageId, $business_connection_id, $message, $timestamp, $type, $answered, $replied_message);
   `;
 
   logger.info(`Executing query: ${JSON.stringify(query)} for chatId: ${chatId}, messageId: ${messageId}, business_connection_id: ${business_connection_id}`);
@@ -85,6 +87,7 @@ export async function addChatMessage(
         '$timestamp': { type: Types.TIMESTAMP, value: { uint64Value: Date.now() * 1000 } },
         '$type': { type: Types.UTF8, value: { textValue: type } },
         '$answered': { type: Types.BOOL, value: { boolValue: type === 'bot'?true:false } },
+        '$replied_message': { type: Types.UTF8, value: { textValue: repliedText ?? '' } },
       });
     });
     logger.info(`Successfully added message for chatId: ${chatId}, messageId: ${messageId}, business_connection_id: ${business_connection_id}`);
@@ -109,7 +112,7 @@ export async function getLastChatMessages(
     DECLARE $business_connection_id AS Utf8;
     DECLARE $limit AS Uint64;
 
-    SELECT chatId, messageId, business_connection_id, message, timestamp, type, answered
+    SELECT chatId, messageId, business_connection_id, message, timestamp, type, answered, replied_message
     FROM ${tableName}
     WHERE chatId = $chatId AND business_connection_id = $business_connection_id
     ORDER BY timestamp DESC
@@ -138,6 +141,7 @@ export async function getLastChatMessages(
             timestamp: new Date(Number(row.items![4].uint64Value) / 1000),
             type: row.items![5].textValue! as ChatMessageType,
             answered: row.items![6].boolValue!,
+            replied_message: row.items?.[7]?.textValue ?? ''
           });
         }
       }
@@ -187,6 +191,7 @@ export interface ChatMessage {
   timestamp: Date;
   type: ChatMessageType;
   answered: boolean;
+  replied_message: string;
 }
 
 export interface Prompt {

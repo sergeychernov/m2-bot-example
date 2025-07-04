@@ -60,6 +60,15 @@ async function initializeBot() {
   }
 }
 
+// Сначала регистрируем обработчики команд
+initializeStartCommand(bot);
+initializeQuiz(bot);
+initializeActivateCommand(bot);
+
+initializeClientsCommand(bot);
+
+debugClientCommands(bot);
+
 // Команда /help
 bot.command('help', async (ctx) => {
     await ctx.reply(
@@ -71,9 +80,6 @@ bot.command('help', async (ctx) => {
         '/demo - Демонстрация возможностей'
     );
 });
-
-
-initializeClientsCommand(bot);
 
 // Команда /demo
 bot.command('demo', async (ctx) => {
@@ -97,8 +103,6 @@ bot.command('demo', async (ctx) => {
     await ctx.reply('Произошла ошибка при переключении режима демонстрации.');
   }
 });
-
-debugClientCommands(bot);
 
 // Новый обработчик для сообщений, начинающихся с 'y:'
 const yandexGptRegex = /^(.*)/i;

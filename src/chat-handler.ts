@@ -1,14 +1,15 @@
 import { Context } from 'grammy';
-import {addChatMessage, ChatMessageType, getLastChatMessages, markMessagesAsAnswered} from './ydb';
+import {addChatMessage, ChatMessageType, getLastChatMessages, markMessagesAsAnswered, getUnansweredMessages} from './ydb';
 import {getGPTResponse} from "./gpt";
 
 export async function chatHandler(ctx: Context, type: ChatMessageType) {
 	const chatId = ctx.chat?.id || 0;
 	const businessConnectionId = ctx.businessConnectionId || '';
 	const messageId = ctx.message?.message_id || 0;
+	const repliedText = ctx.message?.reply_to_message?.text || '';
 	const text = ctx.message?.text || '';
 
-	await addChatMessage(chatId, messageId, businessConnectionId, text, type);
+	await addChatMessage(chatId, messageId, businessConnectionId, text, type, repliedText);
 }
 
 export async function handleBatchMessages(
@@ -18,10 +19,18 @@ export async function handleBatchMessages(
 ) {
 	try {
 		const historyMessages = await getLastChatMessages(chatId, businessConnectionId, 30);
-		const gptMessages = historyMessages.map((v: any) => ({
-			role: (v.type === 'client' ? 'user' : 'assistant') as 'user' | 'assistant',
-			text: v.message
-		}));
+		const gptMessages = historyMessages.map((v: any) => {
+			if (v.replied_message) {
+				return {
+					role: (v.type === 'client' ? 'user' : 'assistant') as 'user' | 'assistant',
+					text: `Пользователь ответил на сообщение "${v.message}": ${v.replied_message}`
+				}
+			}
+			return {
+				role: (v.type === 'client' ? 'user' : 'assistant') as 'user' | 'assistant',
+				text: v.message
+			}
+		});
 
 		const gptResponse = await getGPTResponse(gptMessages, 'base', businessConnectionId, chatId);
 		if (gptResponse?.text && !gptResponse.error) {
@@ -30,6 +39,16 @@ export async function handleBatchMessages(
 			const textToReply = gptResponse.text;
 			const delay = textToReply.length * 200;
 			await imitateTypingBatch(bot, chatId, 0, delay, businessConnectionId);
+
+			const currentUnanswered = await getUnansweredMessages(chatId, businessConnectionId);
+			const currentIds = currentUnanswered.map((m: any) => m.messageId);
+			if (
+				currentIds.length > messageIds.length ||
+				!messageIds.every(id => currentIds.includes(id))
+			) {
+				console.log('Появились новые сообщения во время имитации тайпинга, обработка прервана');
+				return;
+			}
 
 			try {
 				// Пытаемся отправить сообщение через business connection если он указан
