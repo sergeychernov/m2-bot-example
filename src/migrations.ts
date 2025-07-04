@@ -471,4 +471,44 @@ export const migrations: Migration[] = [
             });
         },
     },
+    {
+        version: 12,
+        name: 'AddRepliedMessageToChatsTable',
+        async up(driver: Driver, logger: Logger) {
+            logger.info(`Applying migration: AddRepliedMessageToChatsTable`);
+            try {
+                await driver.queryClient.do({
+                    fn: async (session: QuerySession) => {
+                        const addColumnQuery = `
+                            ALTER TABLE chats
+                                ADD COLUMN replied_message Utf8;
+                        `;
+                        logger.info('Executing query:\n' + addColumnQuery);
+                        await session.execute({ text: addColumnQuery });
+
+                        const updateQuery = `
+                        UPDATE chats
+                        SET replied_message = '';
+                    `;
+                        logger.info('Executing query:\n' + updateQuery);
+                        await session.execute({ text: updateQuery });
+
+                        logger.info('Migration AddRepliedMessageToChatsTable applied successfully');
+                    }
+                });
+            } catch (error) {
+                if (error instanceof Error) {
+                    if (error.message.includes('already exists') || error.message.includes('Cannot add column to table')) {
+                        logger.warn(`Could not add column answered, it might already exist or there's another schema issue: ${error.message}`);
+                    } else {
+                        logger.error('Failed to apply migration AddRepliedMessageToChatsTable:', error);
+                        throw error;
+                    }
+                } else {
+                    logger.error('Failed to apply migration AddRepliedMessageToChatsTable with a non-Error object:', error);
+                    throw error;
+                }
+            }
+        },
+    },
 ];

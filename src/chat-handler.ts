@@ -6,9 +6,10 @@ export async function chatHandler(ctx: Context, type: ChatMessageType) {
 	const chatId = ctx.chat?.id || 0;
 	const businessConnectionId = ctx.businessConnectionId || '';
 	const messageId = ctx.message?.message_id || 0;
+	const repliedText = ctx.message?.reply_to_message?.text || '';
 	const text = ctx.message?.text || '';
 
-	await addChatMessage(chatId, messageId, businessConnectionId, text, type);
+	await addChatMessage(chatId, messageId, businessConnectionId, text, type, repliedText);
 }
 
 export async function handleBatchMessages(
@@ -18,10 +19,18 @@ export async function handleBatchMessages(
 ) {
 	try {
 		const historyMessages = await getLastChatMessages(chatId, businessConnectionId, 30);
-		const gptMessages = historyMessages.map((v: any) => ({
-			role: (v.type === 'client' ? 'user' : 'assistant') as 'user' | 'assistant',
-			text: v.message
-		}));
+		const gptMessages = historyMessages.map((v: any) => {
+			if (v.replied_message) {
+				return {
+					role: (v.type === 'client' ? 'user' : 'assistant') as 'user' | 'assistant',
+					text: `Пользователь ответил на сообщение "${v.message}": ${v.replied_message}`
+				}
+			}
+			return {
+				role: (v.type === 'client' ? 'user' : 'assistant') as 'user' | 'assistant',
+				text: v.message
+			}
+		});
 
 		const gptResponse = await getYandexGPTResponse(gptMessages, 'base', businessConnectionId, chatId);
 		if (gptResponse?.text && !gptResponse.error) {
