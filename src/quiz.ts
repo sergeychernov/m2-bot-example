@@ -108,8 +108,7 @@ export function createQuiz(quizConfig: QuizConfig) {
         await bot.api.sendMessage(userId, currentQ.question, messageOptions);
       }
     } catch (e) {
-      console.error('Ошибка в sendQuestion:', e);
-      // Не отправляем пользователю ошибку напрямую, т.к. это может быть не ctx
+      console.error('Ошибка в sendQuestion:', JSON.stringify(e));
     }
   }
 
