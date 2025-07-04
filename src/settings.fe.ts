@@ -1,5 +1,16 @@
 import { getLatestPromptByType, Prompt, getQuizConfig } from './ydb';
 
+// Объект с возможными значениями моделей
+const AVAILABLE_MODELS = {
+  '/yandexgpt-lite/latest': '/yandexgpt-lite/latest',
+  '/yandexgpt/latest': '/yandexgpt/latest',
+  'gemini-2.5-pro': 'gemini-2.5-pro',
+  'gemini-2.5-flash': 'gemini-2.5-flash',
+  'gemini-2.5-flash-lite-preview-06-17': 'gemini-2.5-flash-lite-preview-06-17',
+};
+
+const DEFAULT_MODEL = '/yandexgpt-lite/latest';
+
 export async function renderSettingsPage(event: any): Promise<any> {
   const queryParams = event.queryStringParameters || {};
   const view = queryParams.view || 'base'; // 'base', 'summary', or 'quiz'
@@ -15,10 +26,18 @@ export async function renderSettingsPage(event: any): Promise<any> {
 
     // Default values
     const promptText = currentPrompt?.promptText || '';
-    const model = currentPrompt?.model || '/yandexgpt-lite/latest';
+    const rawModel = currentPrompt?.model || DEFAULT_MODEL;
+    // Проверяем, что модель соответствует одному из возможных значений
+    const model = Object.keys(AVAILABLE_MODELS).includes(rawModel) ? rawModel : DEFAULT_MODEL;
     const stream = currentPrompt?.stream || false;
     const temperature = currentPrompt?.temperature || 0.6;
     const maxTokens = currentPrompt?.maxTokens || 20000;
+
+    // Генерируем опции для select
+    const modelOptions = Object.entries(AVAILABLE_MODELS)
+      .map(([value, label]) => 
+        `<option value="${value}" ${model === value ? 'selected' : ''}>${label}</option>`
+      ).join('\n                    ');
 
     formContent = `
       <form method="POST" style="flex-grow: 1; display: flex; flex-direction: column; padding: 20px; box-sizing: border-box;">
@@ -42,7 +61,9 @@ export async function renderSettingsPage(event: any): Promise<any> {
               <div class="form-group-row">
                 <div class="form-group">
                   <label for="model">Модель:</label>
-                  <input type="text" id="model" name="model" value="${model}">
+                  <select id="model" name="model">
+                    ${modelOptions}
+                  </select>
                 </div>
                 <div class="form-group">
                   <label for="temperature">Temperature:</label>

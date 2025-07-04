@@ -2,7 +2,7 @@ import { getDriver, Client, getClient, getLastChatMessages, getMode } from './yd
 import { getBusinessConnectionIdByUserId } from './users';
 import { InlineKeyboard } from 'grammy';
 import { Types } from 'ydb-sdk';
-import { getYandexGPTResponse } from './gpt';
+import { getGPTResponse } from './gpt';
 
 export interface ClientChat {
   chatId: number;
@@ -245,7 +245,7 @@ export function initializeClientsCommand(bot: any) {
     
     const historyMessages = await getLastChatMessages(clientId, businessConnectionId || '', 50);
     console.log('client_', clientId, userId, businessConnectionId, historyMessages.length);
-            // Формируем только сообщения пользователя и ассистента для передачи в getYandexGPTResponse
+            // Формируем только сообщения пользователя и ассистента для передачи в getGPTResponse
 	const gptMessages = historyMessages.map((v) => ({
 		role: (v.type === 'client' ? 'user' : 'assistant') as 'user' | 'assistant',
 		text: v.message
@@ -257,7 +257,7 @@ export function initializeClientsCommand(bot: any) {
 		return;
 	}
 
-	const gptResponse = await getYandexGPTResponse(gptMessages, 'summary', businessConnectionId || '', clientId);
+	const gptResponse = await getGPTResponse(gptMessages, 'summary', businessConnectionId || '', clientId);
 	
     if (gptResponse && gptResponse.text && client && !gptResponse.error) {
       let message = `*Информация о клиенте ${getClientDisplayName(client)}*\n\n`+`${gptResponse.text}`;
