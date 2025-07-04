@@ -1,7 +1,7 @@
 import { Bot, CommandContext, Context, InlineKeyboard } from 'grammy';
 import { getMode, setMode, updateUserBusinessConnection } from './ydb';
 import { formatMarkdownV2Text, escapeMarkdownV2 } from './telegram-utils';
-import { startQuizWithFreshConfigForUser } from './quiz-handler';
+import { startQuizWithFreshConfig } from './quiz-handler';
 
 /**
  * Создает безопасное сообщение для MarkdownV2 с готовым форматированием
@@ -62,7 +62,7 @@ export function initializeStartCommand(bot: Bot) {
 
         try {
             await setMode(userId, 'quiz');
-            await startQuizWithFreshConfigForUser(userId);
+            await startQuizWithFreshConfig(userId);
             await ctx.answerCallbackQuery('Опросник запущен!');
         } catch (error) {
             console.error('Error starting quiz:', JSON.stringify(error));
@@ -97,7 +97,7 @@ export function initializeStartCommand(bot: Bot) {
                 // Отправляем сообщение напрямую пользователю через обычного бота
                 await bot.api.sendMessage(userId, responseText);
                 await setMode(userId, 'quiz');
-                await startQuizWithFreshConfigForUser(userId);
+                await startQuizWithFreshConfig(userId);
             } else {
                 await next();
             }

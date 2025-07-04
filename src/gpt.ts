@@ -2,13 +2,14 @@ import {
     getLatestPromptByType,
     Prompt,
     getDriver,
-    logger
+    logger,
+    getMode
 } from './ydb';
 import {
   Types
 } from 'ydb-sdk';
 import { formatProfileMarkdownV2 } from "./telegram-utils";
-import { getUserDataByBusinessConnectionId } from './users';
+import { getUserDataByBusinessConnectionId, getUserDataByUserId } from './users';
 
 // ID вашего каталога в Yandex Cloud
 const FOLDER_ID = process.env.YC_FOLDER_ID; // Оставляем, если используется для x-folder-id или если modelUri в json не полный
@@ -135,9 +136,16 @@ export async function getYandexGPTResponse(
             return { text: 'Ошибка: Не удалось загрузить настройки GPT из базы данных.' };
         }
 
-        const userData = await getUserDataByBusinessConnectionId(businessConnectionId);
+        let mode = await getMode(chatId);
+        let userData = null;
+        if (businessConnectionId) {
+            userData = await getUserDataByBusinessConnectionId(businessConnectionId);
+        }
+        if (!userData && mode === 'demo' && chatId) {
+            userData = await getUserDataByUserId(chatId);
+        }
         if (!userData) {
-            console.warn(`No user data found for userId: ${businessConnectionId}. Proceeding without it.`);
+            console.warn(`No user data found for businessConnectionId: ${businessConnectionId} or userId: ${chatId}. Proceeding without it.`);
         }
 
         const systemPromptText = formatSystemPrompt(gptSettings.promptText, userData?.profile || {});

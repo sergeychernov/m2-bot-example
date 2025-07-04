@@ -55,22 +55,11 @@ export function createQuiz(quizConfig: QuizConfig) {
     }
   }
 
-  async function startQuiz(ctx: Context, allowExit = false) {
-    if (!ctx.chat || !ctx.from) return;
-    const userId = ctx.from.id;
-
-    let state = await loadQuizState(userId);
-    if (!state) {
-      state = { step: 0, answers: {}, allowExit };
-      await saveQuizState(userId, 0, {}, allowExit);
+  async function startQuiz(userId: number, allowExit = false) {
+    if (!userId) {
+      return;
     }
-    if (quizDescription) {
-      await ctx.reply(quizDescription);
-    }
-    await sendQuestion(ctx, state);
-  }
 
-  async function startQuizForUser(userId: number, allowExit = false) {
     let state = await loadQuizState(userId);
     if (!state) {
       state = { step: 0, answers: {}, allowExit };
@@ -79,52 +68,10 @@ export function createQuiz(quizConfig: QuizConfig) {
     if (quizDescription) {
       await bot.api.sendMessage(userId, quizDescription);
     }
-    await sendQuestionToUser(userId, state);
+    await sendQuestion(userId, state);
   }
 
-  async function sendQuestion(ctx: Context, state: { step: number; answers: Record<string, any>; allowExit: boolean }) {
-    try {
-      const currentQ = questions[state.step];
-      if (!currentQ) return;
-      let keyboard: InlineKeyboard | undefined = undefined;
-
-      if (currentQ.type === 'buttons') {
-        keyboard = new InlineKeyboard();
-        currentQ.options?.forEach((option: string) => keyboard!.text(option, `simple_quiz_${currentQ.id}_${option}`).row());
-      }
-      if (currentQ.type === 'multi-select') {
-        const selected: string[] = Array.isArray(state.answers[currentQ.id]) ? state.answers[currentQ.id] as string[] : [];
-        keyboard = new InlineKeyboard();
-        for (const option of currentQ.options || []) {
-          keyboard.text(
-            `${selected.includes(option) ? "✅" : "  "} ${option}`,
-            `multi_${currentQ.id}_${option}`
-          ).row();
-        }
-        keyboard.text("➡️ Готово", `multi_done_${currentQ.id}`);
-      }
-      if (state.allowExit && buttonLabels?.exit) {
-        (keyboard ??= new InlineKeyboard()).text(buttonLabels.exit, 'exit_quiz').row();
-      }
-      const messageOptions = {
-        reply_markup: keyboard?.inline_keyboard.length ? keyboard : undefined,
-        parse_mode: 'HTML' as const
-      };
-      if (currentQ.imageUrl) {
-        await ctx.replyWithPhoto(currentQ.imageUrl, {
-          caption: currentQ.question,
-          ...messageOptions,
-        });
-      } else {
-        await ctx.reply(currentQ.question, messageOptions);
-      }
-    } catch (e) {
-      console.error('Ошибка в sendQuestion:', e);
-      try { await ctx.reply('Произошла ошибка при отправке вопроса.'); } catch { }
-    }
-  }
-
-  async function sendQuestionToUser(userId: number, state: { step: number; answers: Record<string, any>; allowExit: boolean }) {
+  async function sendQuestion(userId: number, state: { step: number; answers: Record<string, any>; allowExit: boolean }) {
     try {
       const currentQ = questions[state.step];
       if (!currentQ) return;
@@ -161,7 +108,7 @@ export function createQuiz(quizConfig: QuizConfig) {
         await bot.api.sendMessage(userId, currentQ.question, messageOptions);
       }
     } catch (e) {
-      console.error('Ошибка в sendQuestionToUser:', e);
+      console.error('Ошибка в sendQuestion:', e);
       // Не отправляем пользователю ошибку напрямую, т.к. это может быть не ctx
     }
   }
@@ -190,7 +137,7 @@ export function createQuiz(quizConfig: QuizConfig) {
         await saveUserFromState(ctx, state);
         await saveQuizState(userId, state.step, state.answers, state.allowExit);
         if (state.step < questions.length) {
-          await sendQuestion(ctx, state);
+          await sendQuestion(ctx.from?.id, state);
         } else {
           await showQuizResult(ctx, state.answers);
           await deleteQuizState(userId);
@@ -242,7 +189,7 @@ export function createQuiz(quizConfig: QuizConfig) {
       await saveQuizState(userId, state.step, state.answers, state.allowExit);
       await ctx.answerCallbackQuery();
       if (state.step < questions.length) {
-        await sendQuestion(ctx, state);
+        await sendQuestion(ctx.from?.id, state);
       } else {
         await showQuizResult(ctx, state.answers);
         await deleteQuizState(userId);
@@ -305,7 +252,7 @@ export function createQuiz(quizConfig: QuizConfig) {
         await saveQuizState(userId, state.step, state.answers, state.allowExit);
         await ctx.answerCallbackQuery();
         if (state.step < questions.length) {
-          await sendQuestion(ctx, state);
+          await sendQuestion(ctx.from?.id, state);
         } else {
           await showQuizResult(ctx, state.answers);
           await deleteQuizState(userId);
@@ -381,7 +328,6 @@ export function createQuiz(quizConfig: QuizConfig) {
     handleQuizButton,
     handleQuizExit,
     handleMultiSelect,
-    startQuizForUser,
   };
 }
 
