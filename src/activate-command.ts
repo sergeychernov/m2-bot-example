@@ -1,6 +1,6 @@
 import { Bot, CommandContext, Context } from 'grammy';
 import { setMode } from './ydb';
-import { formatMarkdownV2Text, escapeMarkdownV2 } from './telegram-utils';
+import { formatMarkdownV2Text, escapeMarkdownV2, isUserProfileComplete } from './telegram-utils';
 
 /**
  * Создает безопасное сообщение для MarkdownV2 с инструкцией активации
@@ -25,6 +25,11 @@ export function initializeActivateCommand(bot: Bot) {
         const userId = ctx.from?.id;
         if (!userId) {
             await ctx.reply('Не удалось определить ваш ID.');
+            return;
+        }
+
+        if (!(await isUserProfileComplete(userId))) {
+            await ctx.api.sendMessage(userId, 'Сначала полностью заполните профиль, пройдя опросник с помощью команды /quiz');
             return;
         }
 

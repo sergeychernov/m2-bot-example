@@ -9,7 +9,6 @@ export async function processAllUnansweredChats() {
       if (messages.length > 0) {
         const messageIds = messages.map(m => m.messageId);
         await handleBatchMessages(chatId, business_connection_id, messageIds);
-        await markMessagesAsAnswered(chatId, business_connection_id, messageIds);
       }
     })
   );

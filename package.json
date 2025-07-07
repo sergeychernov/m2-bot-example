@@ -13,6 +13,7 @@
     "deploy-test": "env -u YC_FUNCTION_NAME -u BOT_TOKEN -u YDB_DATABASE -u YC_ENTRYPOINT dotenv -e .envtest -- bash -c 'npm run _deploy-common'",
     "deploy-answering": "env -u YC_FUNCTION_NAME -u BOT_TOKEN -u YDB_DATABASE -u YC_ENTRYPOINT dotenv -e .envanswering -- bash -c 'npm run _deploy-common'",
     "deploy-answering-test": "env -u YC_FUNCTION_NAME -u BOT_TOKEN -u YDB_DATABASE -u YC_ENTRYPOINT dotenv -e .envansweringtest -- bash -c 'npm run _deploy-common'",
+    "deploy-settings": "env -u YC_FUNCTION_NAME -u BOT_TOKEN -u YDB_DATABASE -u YC_ENTRYPOINT dotenv -e .envsettings -- bash -c 'npm run _deploy-common'",
     "deploy-settings-test": "env -u YC_FUNCTION_NAME -u BOT_TOKEN -u YDB_DATABASE -u YC_ENTRYPOINT dotenv -e .envsettingstest -- bash -c 'npm run _deploy-common'",
     "deploy-settings": "env -u YC_FUNCTION_NAME -u BOT_TOKEN -u YDB_DATABASE -u YC_ENTRYPOINT dotenv -e .envsettings -- bash -c 'npm run _deploy-common'",
     "clear-cache": "echo \"Для очистки кеша выполните: unset YC_FUNCTION_NAME BOT_TOKEN YDB_DATABASE YC_ENTRYPOINT\""

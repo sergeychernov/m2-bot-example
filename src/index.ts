@@ -22,7 +22,7 @@ import { initializeStartCommand } from './start-command';
 import { bot } from './bot-instance';
 import {processAllUnansweredChats} from "./process-unanswered-messages";
 import { handleVoiceMessage } from './voice-handler';
-import { TelegramVoice } from './telegram-utils';
+import { TelegramVoice, isUserProfileComplete } from './telegram-utils';
 import { Context } from 'grammy';
 import { initializeActivateCommand } from './activate-command';
 
@@ -95,6 +95,10 @@ bot.command('demo', async (ctx) => {
       await setMode(userId, 'none');
       await ctx.reply('Режим демонстрации выключен.');
     } else {
+        if (!(await isUserProfileComplete(userId))) {
+            await ctx.api.sendMessage(userId, 'Сначала полностью заполните профиль, пройдя опросник с помощью команды /quiz');
+            return;
+        }
       await setMode(userId, 'demo');
       await ctx.reply(`Режим демонстрации включен. Теперь вы можете пообщаться со своим аватаром отсюда.`);
     }

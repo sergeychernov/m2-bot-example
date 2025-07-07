@@ -75,6 +75,8 @@ export async function handleBatchMessages(
 					throw e;
 				}
 			}
+		} else {
+			console.error('[handleBatchMessages] Ошибка от gpt, сообщения НЕ помечаем как отвеченные:', gptResponse?.text);
 		}
 	} catch (error) {
 		console.error('Ошибка при ответе на сообщение от клиента:', JSON.stringify(error));
