@@ -97,6 +97,42 @@ export async function addChatMessage(
   }
 }
 
+
+export async function updateChatMessage(
+    chatId: number,
+    messageId: number,
+    businessConnectionId: string,
+    updatedMessage: string,
+    iamToken?: string
+): Promise<void> {
+  const currentDriver = await getDriver(iamToken);
+  const tableName = 'chats';
+  const query = `
+    DECLARE $chatId AS Int64;
+    DECLARE $messageId AS Int64;
+    DECLARE $businessConnectionId AS Utf8;
+    DECLARE $updatedMessage AS Utf8;
+    UPDATE ${tableName}
+    SET message = $updatedMessage
+    WHERE chatId = $chatId AND messageId = $messageId AND business_connection_id = $businessConnectionId;
+  `;
+  try {
+    await currentDriver.tableClient.withSession(async (session) => {
+      await session.executeQuery(query, {
+        $chatId: { type: Types.INT64, value: { int64Value: chatId } },
+        $messageId: { type: Types.INT64, value: { int64Value: messageId } },
+        $businessConnectionId: { type: Types.UTF8, value: { textValue: businessConnectionId } },
+        $updatedMessage: { type: Types.UTF8, value: { textValue: updatedMessage } },
+      });
+    });
+    logger.info(`Updated messageId=${messageId} in chatId=${chatId} (business_connection_id=${businessConnectionId})`);
+  } catch (error) {
+    logger.error(`Failed to update messageId=${messageId} in chatId=${chatId} (business_connection_id=${businessConnectionId}):`, error);
+    throw error;
+  }
+}
+
+
 export async function getLastChatMessages(
   chatId: number,
   business_connection_id: string, // Заменено userId на business_connection_id
