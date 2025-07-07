@@ -1,3 +1,6 @@
+import { getQuizConfig } from './ydb';
+import { getUserDataByUserId } from './users';
+
 export interface TelegramVoice {
     file_id: string;
     file_unique_id: string;
@@ -112,4 +115,32 @@ export function formatProfileMarkdownV2(userData: Record<string, any>): string {
       return `${formatMarkdownV2Text(key, { bold: true })}: ${displayValue}`;
     })
     .join('\n');
+}
+
+export async function isUserProfileComplete(userId: number): Promise<boolean> {
+  const quizConfig = await getQuizConfig();
+  if (!quizConfig) {
+    return false;
+  }
+
+  const requiredKeys = quizConfig.questions
+    .filter((q: any) => q.required !== false)
+    .map((q: any) => q.key as string);
+
+  const userData = await getUserDataByUserId(userId);
+  if (!userData) {
+    console.warn(`[PROFILE CHECK] Нет userData для userId=${userId}`);
+    return false;
+  }
+
+  const profile = userData.profile || {};
+  const filledKeys = requiredKeys.filter((key: string) => profile[key] !== undefined && profile[key] !== '');
+
+  if (filledKeys.length < requiredKeys.length) {
+    const missing = requiredKeys.filter((key: string) => profile[key] === undefined || profile[key] === '');
+    console.warn(`[PROFILE CHECK] userId=${userId} профиль не заполнен. Не хватает: ${missing.join(', ')}`);
+    return false;
+  }
+
+  return true;
 }
