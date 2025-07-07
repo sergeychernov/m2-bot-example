@@ -6,7 +6,7 @@ import {
     getDriver,
     getMode,
     setClient,
-    setMode,
+    setMode, updateChatMessage,
     UserMode,
 } from './ydb';
 
@@ -144,6 +144,18 @@ bot.hears(yandexGptRegex, async (ctx, next) => {
   }
 
   await next();
+});
+
+bot.on('edited_message', async (ctx: Context) => {
+    const editedMsg = ctx.editedMessage;
+    const chatId = editedMsg?.chat.id;
+    const messageId = editedMsg?.message_id;
+    const newText = editedMsg?.text;
+    const businessConnectionId = ctx.businessConnectionId || ctx.message?.business_connection_id;
+
+    if (newText && chatId && messageId) {
+        await updateChatMessage(chatId, messageId, businessConnectionId || '', newText);
+    }
 });
 
 let dbDriver: Driver | undefined;
