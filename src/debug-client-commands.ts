@@ -59,9 +59,11 @@ export async function debugClientCommands(bot: Bot) {
   }
   
   async function lastHandler(ctx: Context, n = 20): Promise<void> {
-	console.log('Received "last:" command:', JSON.stringify(ctx));
-	  const chatId = ctx.chat?.id;
-	  const userId = ctx.from?.id;
+	const chatId = ctx.chat?.id;
+	const userId = ctx.from?.id;
+	const business_connection_id = ctx.businessConnectionId || await getBusinessConnectionIdByUserId(userId || 0) || '';
+	
+	console.log('Received "last:" command:', JSON.stringify(ctx), chatId, userId);
   
 	if (!chatId || !userId) {
 	  await ctx.reply('Не удалось определить ID чата.');
@@ -73,7 +75,7 @@ export async function debugClientCommands(bot: Bot) {
 	  // В вашем текущем getLastTenChatMessages iamToken опционален, 
 	  // но если бы он был обязателен, его нужно было бы получить здесь, 
 	  // например, из context в serverless-функции или другим способом.
-	  const messages = await getLastChatMessages(chatId, await getBusinessConnectionIdByUserId(userId)||'', n);
+	  const messages = await getLastChatMessages(chatId, business_connection_id, n);
   
 	  if (messages.length === 0) {
 		await ctx.reply('Сообщений в этом чате пока нет.');
