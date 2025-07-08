@@ -37,7 +37,7 @@ export async function handleSettingsPost(event: any): Promise<any> {
       const temperature = temperatureStr ? parseFloat(temperatureStr) : 0.6;
       const maxTokensStr = params.get('maxTokens');
       const maxTokens = maxTokensStr ? parseInt(maxTokensStr, 10) : 20000;
-      const stream = params.get('stream') === 'on';
+      const stream = false;
 
       await addPrompt(promptText, formType, model, stream, temperature, maxTokens);
     } else if (formType === 'quiz') {

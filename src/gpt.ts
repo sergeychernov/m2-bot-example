@@ -313,6 +313,7 @@ export async function getGPTResponse(
     promptType: string,
     businessConnectionId: string,
     chatId: number,
+    mode?: string,
 ): Promise<GPTResponse> {
     if (!currentIamToken) {
         console.error('IAM token not available');
@@ -326,7 +327,6 @@ export async function getGPTResponse(
             return { text: 'Ошибка: Не удалось загрузить настройки GPT из базы данных.', error: true, inputTextTokens: 0, completionTokens: 0, totalTokens: 0  };
         }
 
-        let mode = await getMode(chatId);
         let userData = null;
         if (businessConnectionId) {
             userData = await getUserDataByBusinessConnectionId(businessConnectionId);
