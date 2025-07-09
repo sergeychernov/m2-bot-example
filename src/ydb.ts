@@ -8,6 +8,7 @@ import {
 
 } from 'ydb-sdk';
 import crypto from 'crypto';
+import { Who } from './telegram-utils';
 
 const endpoint = process.env.YDB_ENDPOINT;
 const database = process.env.YDB_DATABASE;
@@ -52,7 +53,7 @@ export async function addChatMessage(
   messageId: number, // Изменено с string на number
   business_connection_id: string, // Заменено userId на business_connection_id
   message: string,
-  type: ChatMessageType,
+  who: Who,
   repliedText?: string,
   iamToken?: string
 ): Promise<void> {
@@ -85,8 +86,8 @@ export async function addChatMessage(
         '$business_connection_id': { type: Types.UTF8, value: { textValue: business_connection_id } },
         '$message': { type: Types.UTF8, value: { textValue: message } },
         '$timestamp': { type: Types.TIMESTAMP, value: { uint64Value: Date.now() * 1000 } },
-        '$type': { type: Types.UTF8, value: { textValue: type } },
-        '$answered': { type: Types.BOOL, value: { boolValue: type === 'bot'?true:false } },
+        '$type': { type: Types.UTF8, value: { textValue: who.role } },
+        '$answered': { type: Types.BOOL, value: { boolValue: who.role === 'user' } },
         '$replied_message': { type: Types.UTF8, value: { textValue: repliedText ?? '' } },
       });
     });

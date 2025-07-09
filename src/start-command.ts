@@ -70,39 +70,5 @@ export function initializeStartCommand(bot: Bot) {
         }
     });
     
-    // Обработчик для business_message
-    bot.on('business_message', async (ctx, next) => {
-        try {
-            const businessMessage = ctx.businessMessage;
-            
-            // Проверяем, что chat.username равен m2assist
-            if (businessMessage?.chat?.username === 'm2assist' || businessMessage?.chat?.username === 'petrovpaveld') {
-                const businessConnectionId = businessMessage.business_connection_id;
-                const userId = businessMessage.from?.id;
-                
-                // Ensure userId is a valid number
-                if (!userId || typeof userId !== 'number') {
-                    console.error('Invalid userId from business message:', userId);
-                    return;
-                }
-                
-                // Обновляем business_connection_id в таблице users
-                if (businessConnectionId) {
-                    await updateUserBusinessConnection(userId, businessConnectionId);
-                }
-                
-                // Отправляем ответ с business_connection_id и from.id
-                const responseText = `Ваш бизнес аккаунт связан с панелью администратора, теперь заполните профиль и бот заработает`;
-                
-                // Отправляем сообщение напрямую пользователю через обычного бота
-                await bot.api.sendMessage(userId, responseText);
-                await setMode(userId, 'quiz');
-                await startQuizWithFreshConfig(userId);
-            } else {
-                await next();
-            }
-        } catch (error) {
-            console.error('Error in business_message handler:', JSON.stringify(error));
-        }
-    });
+
 }

@@ -8,15 +8,17 @@ import {
 	getMode
 } from './ydb';
 import {getGPTResponse} from "./gpt";
+import { Who } from './telegram-utils';
+import { Message } from 'grammy/types';
 
-export async function chatHandler(ctx: Context, type: ChatMessageType) {
+export async function chatHandler(ctx: Context, who: Who, message:Message) {
 	const chatId = ctx.chat?.id || 0;
 	const businessConnectionId = ctx.businessConnectionId || '';
-	const messageId = ctx.message?.message_id || 0;
-	const repliedText = ctx.message?.reply_to_message?.text || '';
-	const text = ctx.message?.text || '';
+	const messageId = message?.message_id || 0;
+	const repliedText = message?.reply_to_message?.text || '';
+	const text = message?.text || '';
 
-	await addChatMessage(chatId, messageId, businessConnectionId, text, type, repliedText);
+	await addChatMessage(chatId, messageId, businessConnectionId, text, who, repliedText);
 }
 
 export async function handleBatchMessages(
@@ -63,13 +65,18 @@ export async function handleBatchMessages(
 				const sentMessage = businessConnectionId
 					? await bot.api.sendMessage(chatId, gptResponse.text, { business_connection_id: businessConnectionId })
 					: await bot.api.sendMessage(chatId, gptResponse.text);
+				const who:Who = {
+					room: 'chat',
+					role: 'user',
+					isBot: true,
+				};
 
 				await addChatMessage(
 					chatId,
 					sentMessage.message_id,
 					businessConnectionId,
 					gptResponse.text,
-					'bot'
+					who
 				);
 
 				await markMessagesAsAnswered(chatId, businessConnectionId, messageIds);
