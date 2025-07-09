@@ -29,7 +29,6 @@ export async function renderSettingsPage(event: any): Promise<any> {
     const rawModel = currentPrompt?.model || DEFAULT_MODEL;
     // Проверяем, что модель соответствует одному из возможных значений
     const model = Object.keys(AVAILABLE_MODELS).includes(rawModel) ? rawModel : DEFAULT_MODEL;
-    const stream = currentPrompt?.stream || false;
     const temperature = currentPrompt?.temperature || 0.6;
     const maxTokens = currentPrompt?.maxTokens || 20000;
 
@@ -74,12 +73,6 @@ export async function renderSettingsPage(event: any): Promise<any> {
                 <div class="form-group">
                   <label for="maxTokens">Max Tokens:</label>
                   <input type="number" id="maxTokens" name="maxTokens" value="${maxTokens}" min="1" max="20000">
-                </div>
-                <div class="form-group">
-                  <label for="stream">
-                    <input type="checkbox" id="stream" name="stream" ${stream ? 'checked' : ''}>
-                    Stream (потоковая передача)
-                  </label>
                 </div>
               </div>
             </div>

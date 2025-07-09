@@ -1,5 +1,12 @@
 import { Context } from 'grammy';
-import {addChatMessage, ChatMessageType, getLastChatMessages, markMessagesAsAnswered, getUnansweredMessages} from './ydb';
+import {
+	addChatMessage,
+	ChatMessageType,
+	getLastChatMessages,
+	markMessagesAsAnswered,
+	getUnansweredMessages,
+	getMode
+} from './ydb';
 import {getGPTResponse} from "./gpt";
 
 export async function chatHandler(ctx: Context, type: ChatMessageType) {
@@ -18,21 +25,22 @@ export async function handleBatchMessages(
 	messageIds: number[]
 ) {
 	try {
+		const mode = await getMode(chatId);
 		const historyMessages = await getLastChatMessages(chatId, businessConnectionId, 30);
 		const gptMessages = historyMessages.map((v: any) => {
 			if (v.replied_message) {
 				return {
-					role: (v.type === 'client' ? 'user' : 'assistant') as 'user' | 'assistant',
+					role: (v.type === 'client' || (mode === 'demo' && v.type === 'admin') ? 'user' : 'assistant') as 'user' | 'assistant',
 					text: `Пользователь ответил на сообщение "${v.message}": ${v.replied_message}`
 				}
 			}
 			return {
-				role: (v.type === 'client' ? 'user' : 'assistant') as 'user' | 'assistant',
+				role: (v.type === 'client' || (mode === 'demo' && v.type === 'admin') ? 'user' : 'assistant') as 'user' | 'assistant',
 				text: v.message
 			}
 		});
 
-		const gptResponse = await getGPTResponse(gptMessages, 'base', businessConnectionId, chatId);
+		const gptResponse = await getGPTResponse(gptMessages, 'base', businessConnectionId, chatId, mode);
 		if (gptResponse?.text && !gptResponse.error) {
 			const { bot } = await import('./bot-instance');
 			const { imitateTypingBatch } = await import('./telegram-utils');
