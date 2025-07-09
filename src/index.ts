@@ -251,30 +251,6 @@ export async function handler(event: any, context?: Context) {
         }
         const update = JSON.parse(updateString);
     console.log('Parsed update:', JSON.stringify(update));
-        // Преобразуем business_message в стандартный формат сообщения Telegram
-    // if (update.business_message) {
-    //       // Обработка голосового сообщения
-    //         if (update.business_message.voice) {
-    //           const { file_id, duration, mime_type, file_size } = update.business_message.voice as TelegramVoice;
-    //           if (duration < 30 && (file_size ?? 0) < 1000000 && mime_type) {
-    //             const chatId = update.business_message.chat.id;
-    //             const businessConnectionId = update.business_message.business_connection_id;
-                
-    //             console.log('Voice message received, processing with SpeechKit...');
-                
-    //             try {
-    //               const recognized = await handleVoiceMessage(file_id, chatId, mime_type, businessConnectionId, context);
-    //               if (recognized?.recognizedText) {
-    //                 update.business_message.text = recognized?.recognizedText;
-    //               }
-    //             } catch (voiceError) {
-    //                 console.error('Error processing voice message:', voiceError);
-    //             }
-    //           } else {
-    //             console.log('TODO: async voice processing')
-    //           }
-    //         }      
-    //     }
 
         await bot.handleUpdate(update);
         return { statusCode: 200, body: 'OK' };
