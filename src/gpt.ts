@@ -41,20 +41,19 @@ async function loadGptSettingsFromDb(promptType: string, iamToken?: string): Pro
     }
 }
 
-export function formatSystemPrompt(basePrompt: string, userData: Record<string, any>, additionalPrompt: string): string {
-    let prompt = basePrompt;
-    if (additionalPrompt && additionalPrompt.trim()) {
-        prompt = basePrompt + '\n\n' + additionalPrompt;
-    }
-
+export function formatSystemPrompt(basePrompt: string, userData: Record<string, any>, additionalPrompt: string): string[] {
+    let base = basePrompt;
+    let additional = additionalPrompt;
     for (const key in userData) {
-        prompt = prompt.replace(new RegExp(`{{${key}}}`, 'g'), userData[key]);
+        base = base.replace(new RegExp(`{{${key}}}`, 'g'), userData[key]);
+        if (additional) additional = additional.replace(new RegExp(`{{${key}}}`, 'g'), userData[key]);
     }
-
     const profileData = formatProfileMarkdownV2(userData);
-    prompt = prompt.replace(/{{profile}}/g, profileData);
-
-    return prompt;
+    base = base.replace(/{{profile}}/g, profileData);
+    if (additional) {
+        additional = additional.replace(/{{profile}}/g, profileData);
+    }
+    return [base, ...(additional && additional.trim() ? [additional] : [])];
 }
 
 // Обновленная функция getYandexGPTResponse
@@ -146,7 +145,7 @@ interface GeminiSuccessResponse {
 
 async function getGeminiResponse(
     userMessages: { role: 'user' | 'assistant'; text: string }[],
-    systemPromptText: string,
+    systemPromptParts: string[],
     gptSettings: Prompt
 ): Promise<GPTResponse> {
     if (!GEMINI_API_KEY) {
@@ -171,11 +170,7 @@ async function getGeminiResponse(
     const body = {
         contents: contents,
         systemInstruction: {
-            parts: [
-                {
-                    text: systemPromptText
-                }
-            ]
+            parts: systemPromptParts.map(text => ({ text }))
         },
         generationConfig: {
             temperature: gptSettings.temperature,
@@ -219,7 +214,7 @@ async function getGeminiResponse(
 
 async function getYandexGPTResponse(
     userMessages: { role: 'user' | 'assistant'; text: string }[],
-    systemPromptText: string,
+    systemPromptParts: string[],
     gptSettings: Prompt
 ): Promise<GPTResponse> {
     if (!currentIamToken) {
@@ -234,6 +229,8 @@ async function getYandexGPTResponse(
 
     const url = 'https://llm.api.cloud.yandex.net/foundationModels/v1/completion';
 
+    const systemMessages = systemPromptParts.map(text => ({ role: 'system', text }));
+
     const requestBody = {
         modelUri: `gpt://${FOLDER_ID}${gptSettings.model}`,
         completionOptions: {
@@ -242,10 +239,7 @@ async function getYandexGPTResponse(
             maxTokens: gptSettings.maxTokens,
         },
         messages: [
-            {
-                role: 'system',
-                text: systemPromptText
-            },
+            ...systemMessages,
             ...userMessages
         ],
     };
@@ -335,21 +329,18 @@ export async function getGPTResponse(
         }
 
         const additionalPrompt = getAdditionalPrompt(gptSettings, userMessages);
-
-        const systemPromptText = formatSystemPrompt(gptSettings.promptText, userData?.profile || {}, additionalPrompt);
+        const systemPromptParts = formatSystemPrompt(gptSettings.promptText, userData?.profile || {}, additionalPrompt);
 
         let response;
         if (gptSettings.model.startsWith('gemini')) {
-            response = await getGeminiResponse(userMessages, systemPromptText, gptSettings);
+            response = await getGeminiResponse(userMessages, systemPromptParts, gptSettings);
         } else {
-            response = await getYandexGPTResponse(userMessages, systemPromptText, gptSettings);
+            response = await getYandexGPTResponse(userMessages, systemPromptParts, gptSettings);
         }
 
         if (response && response.text && !response.error) {
 
                 try {
-                    // Assuming you can get token counts from somewhere for Yandex
-                    // This part needs adjustment if you can't get the token counts before this call
                     await logBudget(
                         chatId,
                         businessConnectionId,
