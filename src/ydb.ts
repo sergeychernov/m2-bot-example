@@ -233,6 +233,8 @@ export interface ChatMessage {
 export interface Prompt {
   promptId: string;
   promptText: string;
+  greetingPrompt?: string;
+  dialogPrompt?: string;
   promptType: string;
   createdAt: Date;
   model: string; // Новое поле
@@ -298,7 +300,7 @@ export async function getLatestPromptByType(promptType: string, iamToken?: strin
       const query = `
         DECLARE $promptType AS Utf8;
 
-        SELECT promptId, promptText, promptType, createdAt, model, \`stream\`, temperature, maxTokens
+        SELECT promptId, promptText, greetingPrompt, dialogPrompt, promptType, createdAt, model, \`stream\`, temperature, maxTokens
         FROM prompts
         WHERE promptType = $promptType
         ORDER BY createdAt DESC
@@ -315,12 +317,14 @@ export async function getLatestPromptByType(promptType: string, iamToken?: strin
           return {
             promptId: row.items[0].textValue || '',
             promptText: row.items[1].textValue || '',
-            promptType: row.items[2].textValue || '',
-            createdAt: new Date(Number(row.items[3].uint64Value) / 1000),
-            model: row.items[4].textValue || '',
-            stream: row.items[5].boolValue || false,
-            temperature: row.items[6].doubleValue || 0.6,
-            maxTokens: Number(row.items[7].int64Value) || 20000,
+            greetingPrompt: row.items[2]?.textValue || '',
+            dialogPrompt: row.items[3]?.textValue || '',
+            promptType: row.items[4].textValue || '',
+            createdAt: new Date(Number(row.items[5].uint64Value) / 1000),
+            model: row.items[6].textValue || '',
+            stream: row.items[7].boolValue || false,
+            temperature: row.items[8].doubleValue || 0.6,
+            maxTokens: Number(row.items[9].int64Value) || 20000,
           };
         }
       }
@@ -333,6 +337,31 @@ export async function getLatestPromptByType(promptType: string, iamToken?: strin
   }
 }
 
+/**
+ * Обновляет greetingPrompt и dialogPrompt в последней записи с заданным promptType
+ */
+export async function updatePromptDetails(
+  promptType: string,
+  greetingPrompt: string,
+  dialogPrompt: string,
+  iamToken?: string
+): Promise<void> {
+  const currentDriver = await getDriver(iamToken);
+  const lastPrompt = await getLatestPromptByType(promptType, iamToken);
+  if (!lastPrompt) throw new Error('No prompt found to update');
+  const query = `
+    UPDATE prompts
+    SET greetingPrompt = $greetingPrompt, dialogPrompt = $dialogPrompt
+    WHERE promptId = $promptId;
+  `;
+  await currentDriver.tableClient.withSession(async (session) => {
+    await session.executeQuery(query, {
+      $promptId: { type: Types.UTF8, value: { textValue: lastPrompt.promptId } },
+      $greetingPrompt: { type: Types.UTF8, value: { textValue: greetingPrompt } },
+      $dialogPrompt: { type: Types.UTF8, value: { textValue: dialogPrompt } },
+    });
+  });
+}
 
 export async function closeDriver() {
   if (driver) {

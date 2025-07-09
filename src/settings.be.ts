@@ -1,4 +1,4 @@
-import { addPrompt, saveQuizConfig } from './ydb';
+import { addPrompt, saveQuizConfig, updatePromptDetails } from './ydb';
 import Ajv from 'ajv';
 import addFormats from 'ajv-formats';
 import quizSchema from './quiz-schema.json';
@@ -32,6 +32,8 @@ export async function handleSettingsPost(event: any): Promise<any> {
 
     if (formType === 'base' || formType === 'summary') {
       const promptText = params.get('promptText')?.replace(/\r\n/g, '\n') || '';
+      const greetingText = params.get('greetingText')?.replace(/\r\n/g, '\n') || '';
+      const dialogText = params.get('dialogText')?.replace(/\r\n/g, '\n') || '';
       const model = params.get('model') || '/yandexgpt-lite/latest';
       const temperatureStr = params.get('temperature');
       const temperature = temperatureStr ? parseFloat(temperatureStr) : 0.6;
@@ -40,6 +42,10 @@ export async function handleSettingsPost(event: any): Promise<any> {
       const stream = params.get('stream') === 'on';
 
       await addPrompt(promptText, formType, model, stream, temperature, maxTokens);
+    } else if (formType === 'promptDetails') {
+      const greetingText = params.get('greetingText')?.replace(/\r\n/g, '\n') || '';
+      const dialogText = params.get('dialogText')?.replace(/\r\n/g, '\n') || '';
+      await updatePromptDetails('base', greetingText, dialogText);
     } else if (formType === 'quiz') {
       const quizConfigStr = params.get('quizConfig') || '';
       let quizConfig = {};
