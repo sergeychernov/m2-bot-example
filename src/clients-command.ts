@@ -1,8 +1,8 @@
-import { getDriver, Client, getClient, getLastChatMessages, getMode } from './ydb';
+import { getDriver, Client, getClient, getLastChatMessages, getMode, ChatMessage } from './ydb';
 import { getBusinessConnectionIdByUserId } from './users';
 import { InlineKeyboard } from 'grammy';
 import { Types } from 'ydb-sdk';
-import { getGPTResponse } from './gpt';
+import { getGPTResponse, UserMessage } from './gpt';
 
 export interface ClientChat {
   chatId: number;
@@ -247,15 +247,15 @@ export function initializeClientsCommand(bot: any) {
     const historyMessages = await getLastChatMessages(clientId, businessConnectionId || '', 50);
     console.log('client_', clientId, userId, businessConnectionId, historyMessages.length);
             // Формируем только сообщения пользователя и ассистента для передачи в getGPTResponse
-    const gptMessages = historyMessages.map((v: any) => {
+    const gptMessages: UserMessage[] = historyMessages.map((v: ChatMessage) => {
       if (v.replied_message) {
         return {
-          role: (v.type === 'client' || (mode === 'demo' && v.type === 'admin') ? 'user' : 'assistant') as 'user' | 'assistant',
+          role: v.who.role === 'client' ? 'user' : 'assistant',
           text: `Пользователь ответил на сообщение "${v.message}": ${v.replied_message}`
         }
       }
       return {
-        role: (v.type === 'client' || (mode === 'demo' && v.type === 'admin') ? 'user' : 'assistant') as 'user' | 'assistant',
+        role: v.who.role === 'client' ? 'user' : 'assistant',
         text: v.message
       }
     });

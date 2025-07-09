@@ -120,7 +120,7 @@ export function formatProfileMarkdownV2(userData: Record<string, any>): string {
 export type Who = {
     room: 'bot';
     role: 'user';
-    isBot: false; 
+    isBot: boolean; 
 }
     |{
     room: 'bot';

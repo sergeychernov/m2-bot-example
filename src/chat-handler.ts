@@ -1,13 +1,13 @@
 import { Context } from 'grammy';
 import {
 	addChatMessage,
-	ChatMessageType,
 	getLastChatMessages,
 	markMessagesAsAnswered,
 	getUnansweredMessages,
-	getMode
+	getMode,
+	ChatMessage
 } from './ydb';
-import {getGPTResponse} from "./gpt";
+import {getGPTResponse, UserMessage} from "./gpt";
 import { Who } from './telegram-utils';
 import { Message } from 'grammy/types';
 
@@ -29,15 +29,15 @@ export async function handleBatchMessages(
 	try {
 		const mode = await getMode(chatId);
 		const historyMessages = await getLastChatMessages(chatId, businessConnectionId, 30);
-		const gptMessages = historyMessages.map((v: any) => {
+		const gptMessages: UserMessage[] = historyMessages.map((v: ChatMessage) => {
 			if (v.replied_message) {
 				return {
-					role: (v.type === 'client' || (mode === 'demo' && v.type === 'admin') ? 'user' : 'assistant') as 'user' | 'assistant',
+					role: (v.who.role === 'client') ? 'user' : 'assistant',
 					text: `Пользователь ответил на сообщение "${v.message}": ${v.replied_message}`
 				}
 			}
 			return {
-				role: (v.type === 'client' || (mode === 'demo' && v.type === 'admin') ? 'user' : 'assistant') as 'user' | 'assistant',
+				role: (v.who.role === 'client' ? 'user' : 'assistant'),
 				text: v.message
 			}
 		});
@@ -51,7 +51,7 @@ export async function handleBatchMessages(
 			await imitateTypingBatch(bot, chatId, 0, delay, businessConnectionId);
 
 			const currentUnanswered = await getUnansweredMessages(chatId, businessConnectionId);
-			const currentIds = currentUnanswered.map((m: any) => m.messageId);
+			const currentIds = currentUnanswered.map((m) => m.messageId);
 			if (
 				currentIds.length > messageIds.length ||
 				!messageIds.every(id => currentIds.includes(id))

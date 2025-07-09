@@ -304,12 +304,12 @@ type GPTResponse = {
     error?: boolean;
 
 }
-
-export async function getGPTResponse(
-    userMessages: {
+export type UserMessage = {
         role: 'user' | 'assistant';
         text: string;
-    }[],
+    }
+export async function getGPTResponse(
+    userMessages: UserMessage[],
     promptType: string,
     businessConnectionId: string,
     chatId: number,

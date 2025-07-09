@@ -85,7 +85,7 @@ export async function debugClientCommands(bot: Bot) {
 	  let replyText = `Последние ${n} сообщений:\n`;
 	  messages.forEach(msg => {
 		const date = new Date(msg.timestamp); // YDB timestamp is in microseconds
-		replyText += `\n[${date.toLocaleString()}] ${msg.type}: ${msg.message}`;
+		replyText += `\n[${date.toLocaleString()}] ${msg.who.role}: ${msg.message}`;
 	  });
   
 	  await ctx.reply(replyText);
