@@ -229,6 +229,7 @@ export function initializeClientsCommand(bot: any) {
       await ctx.reply('Ошибка: не удалось определить пользователя.');
       return;
     }
+    const mode = await getMode(userId);
     const clientId = Number(ctx.match[1]);
     const client = await getClient(clientId);
     if (!client) {
@@ -246,10 +247,18 @@ export function initializeClientsCommand(bot: any) {
     const historyMessages = await getLastChatMessages(clientId, businessConnectionId || '', 50);
     console.log('client_', clientId, userId, businessConnectionId, historyMessages.length);
             // Формируем только сообщения пользователя и ассистента для передачи в getGPTResponse
-	const gptMessages = historyMessages.map((v) => ({
-		role: (v.type === 'client' ? 'user' : 'assistant') as 'user' | 'assistant',
-		text: v.message
-	}));
+    const gptMessages = historyMessages.map((v: any) => {
+      if (v.replied_message) {
+        return {
+          role: (v.type === 'client' || (mode === 'demo' && v.type === 'admin') ? 'user' : 'assistant') as 'user' | 'assistant',
+          text: `Пользователь ответил на сообщение "${v.message}": ${v.replied_message}`
+        }
+      }
+      return {
+        role: (v.type === 'client' || (mode === 'demo' && v.type === 'admin') ? 'user' : 'assistant') as 'user' | 'assistant',
+        text: v.message
+      }
+    });
 	
 	if (!ctx.from) {
 		console.error('Cannot get user ID from context');
@@ -257,7 +266,7 @@ export function initializeClientsCommand(bot: any) {
 		return;
 	}
 
-	const gptResponse = await getGPTResponse(gptMessages, 'summary', businessConnectionId || '', clientId);
+	const gptResponse = await getGPTResponse(gptMessages, 'summary', businessConnectionId || '', clientId, mode);
 	
     if (gptResponse && gptResponse.text && client && !gptResponse.error) {
       let message = `*Информация о клиенте ${getClientDisplayName(client)}*\n\n`+`${gptResponse.text}`;
