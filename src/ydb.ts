@@ -345,9 +345,6 @@ export async function getLatestPromptByType(promptType: string, iamToken?: strin
   }
 }
 
-/**
- * Обновляет greetingPrompt и dialogPrompt в последней записи с заданным promptType
- */
 export async function updatePromptDetails(
   promptType: string,
   greetingPrompt: string,
