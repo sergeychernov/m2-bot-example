@@ -21,15 +21,24 @@ export async function handler(event: any, context?: any) {
   }
 
   if (event?.details?.payload) {
+    let payload: any;
     try {
-      const payload = JSON.parse(event.details.payload);
+      payload = JSON.parse(event.details.payload);
+    }catch (e) {
+      console.error('Failed to parse timer payload:', JSON.stringify(e));
+      return { statusCode: 400, body: 'Invalid timer payload' };
+    } finally {
+        await closeDriver();
+    }
+    try {
+    
       if (payload.replies_scheduler && iamToken) {
         await getDriver(iamToken); // Убедимся что драйвер создан
         await processAllUnansweredChats();
         return { statusCode: 200, body: 'Unanswered chats processed (from cron)' };
       }
     } catch (e) {
-      console.error('Failed to parse timer payload:', e);
+      console.error('Failed to process unanswered chats:', JSON.stringify(e));
       return { statusCode: 400, body: 'Invalid timer payload' };
     } finally {
         await closeDriver();

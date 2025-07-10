@@ -8,6 +8,7 @@ import {
 
 } from 'ydb-sdk';
 import crypto from 'crypto';
+import { Who } from './telegram-utils';
 
 const endpoint = process.env.YDB_ENDPOINT;
 const database = process.env.YDB_DATABASE;
@@ -45,14 +46,12 @@ export async function getDriver(iamToken?: string): Promise<Driver> {
   return driver;
 }
 
-export type ChatMessageType = 'bot' | 'client' | 'realtor' | 'admin';
-
 export async function addChatMessage(
   chatId: number,
   messageId: number, // Изменено с string на number
   business_connection_id: string, // Заменено userId на business_connection_id
   message: string,
-  type: ChatMessageType,
+  who: Who,
   repliedText?: string,
   iamToken?: string
 ): Promise<void> {
@@ -66,12 +65,12 @@ export async function addChatMessage(
     DECLARE $business_connection_id AS Utf8;
     DECLARE $message AS Utf8;
     DECLARE $timestamp AS Timestamp;
-    DECLARE $type AS Utf8;
+    DECLARE $who AS Json;
     DECLARE $answered AS Bool;
     DECLARE $replied_message AS Utf8;
 
-    UPSERT INTO ${tableName} (chatId, messageId, business_connection_id, message, timestamp, type, answered, replied_message)
-    VALUES ($chatId, $messageId, $business_connection_id, $message, $timestamp, $type, $answered, $replied_message);
+    UPSERT INTO ${tableName} (chatId, messageId, business_connection_id, message, timestamp, who, answered, replied_message)
+    VALUES ($chatId, $messageId, $business_connection_id, $message, $timestamp, $who, $answered, $replied_message);
   `;
 
   logger.info(`Executing query: ${JSON.stringify(query)} for chatId: ${chatId}, messageId: ${messageId}, business_connection_id: ${business_connection_id}`);
@@ -85,8 +84,8 @@ export async function addChatMessage(
         '$business_connection_id': { type: Types.UTF8, value: { textValue: business_connection_id } },
         '$message': { type: Types.UTF8, value: { textValue: message } },
         '$timestamp': { type: Types.TIMESTAMP, value: { uint64Value: Date.now() * 1000 } },
-        '$type': { type: Types.UTF8, value: { textValue: type } },
-        '$answered': { type: Types.BOOL, value: { boolValue: type === 'bot'?true:false } },
+        '$who': { type: Types.JSON, value: { textValue: JSON.stringify(who) } },
+        '$answered': { type: Types.BOOL, value: { boolValue: who.role === 'user' } },
         '$replied_message': { type: Types.UTF8, value: { textValue: repliedText ?? '' } },
       });
     });
@@ -148,7 +147,7 @@ export async function getLastChatMessages(
     DECLARE $business_connection_id AS Utf8;
     DECLARE $limit AS Uint64;
 
-    SELECT chatId, messageId, business_connection_id, message, timestamp, type, answered, replied_message
+    SELECT chatId, messageId, business_connection_id, message, timestamp, who, answered, replied_message
     FROM ${tableName}
     WHERE chatId = $chatId AND business_connection_id = $business_connection_id
     ORDER BY timestamp DESC
@@ -175,7 +174,7 @@ export async function getLastChatMessages(
             business_connection_id: row.items![2].textValue!, // Заменено userId
             message: row.items![3].textValue!,
             timestamp: new Date(Number(row.items![4].uint64Value) / 1000),
-            type: row.items![5].textValue! as ChatMessageType,
+            who: JSON.parse(row.items![5].textValue!),
             answered: row.items![6].boolValue!,
             replied_message: row.items?.[7]?.textValue ?? ''
           });
@@ -255,7 +254,7 @@ export interface ChatMessage {
   business_connection_id: string; // Заменено userId на business_connection_id (UTF8)
   message: string;
   timestamp: Date;
-  type: ChatMessageType;
+  who: Who;
   answered: boolean;
   replied_message: string;
 }
@@ -676,15 +675,24 @@ export async function getChatsWithUnansweredMessages(): Promise<{ chatId: number
   return result;
 }
 
-export async function getUnansweredMessages(chatId: number, business_connection_id: string): Promise<any[]> {
+export interface UnansweredMessage {
+  chatId: number;
+  messageId: number;
+  business_connection_id: string;
+  message: string;
+  who: Who;
+  timestamp: Date;
+}
+
+export async function getUnansweredMessages(chatId: number, business_connection_id: string): Promise<UnansweredMessage[]> {
   const driver = await getDriver();
   const query = `
-        SELECT chatId, messageId, business_connection_id, message, type, timestamp
+        SELECT chatId, messageId, business_connection_id, message, who, timestamp
         FROM chats
         WHERE chatId = $chatId AND business_connection_id = $business_connection_id AND answered = false
         ORDER BY timestamp ASC;
     `;
-  const messages: any[] = [];
+  const messages: UnansweredMessage[] = [];
   await driver.tableClient.withSession(async (session) => {
     const { resultSets } = await session.executeQuery(query, {
       $chatId: { type: Types.INT64, value: { int64Value: chatId } },
@@ -694,10 +702,10 @@ export async function getUnansweredMessages(chatId: number, business_connection_
       for (const row of resultSets[0].rows) {
         messages.push({
           chatId: Number(row.items![0].int64Value),
-          messageId: Number(row.items![1].int64Value), // Изменено на Number
-          business_connection_id: row.items![2].textValue!, // Заменено userId
-          message: row.items![3].textValue,
-          type: row.items![4].textValue,
+          messageId: Number(row.items![1].int64Value),
+          business_connection_id: row.items![2].textValue!,
+          message: row.items![3].textValue!,
+          who: JSON.parse(row.items![4].textValue!),
           timestamp: new Date(Number(row.items![5].uint64Value) / 1000),
         });
       }

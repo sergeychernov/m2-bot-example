@@ -117,6 +117,34 @@ export function formatProfileMarkdownV2(userData: Record<string, any>): string {
     .join('\n');
 }
 
+export type Who = {
+    room: 'bot';
+    role: 'user';
+    isBot: boolean; 
+}
+    |{
+    room: 'bot';
+    role: 'client';//Для демо режима
+    isBot: false; 
+}
+    |
+  {
+    room: 'chat';
+    role: 'user';
+    isBot: boolean;
+  }|
+{
+    room: 'chat';
+    role: 'client';
+    isBot: boolean;
+} |
+{
+    room: 'chat';
+    role: 'client&user';
+    isBot: boolean;
+}
+
+
 export async function isUserProfileComplete(userId: number): Promise<boolean> {
   const quizConfig = await getQuizConfig();
   if (!quizConfig) {

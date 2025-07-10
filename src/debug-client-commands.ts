@@ -1,36 +1,55 @@
-import { Bot, Context } from "grammy";
+import { Bot, Context, NextFunction } from "grammy";
 import { clearChatMessages, getLastChatMessages } from "./ydb";
 import { getBusinessConnectionIdByUserId, getUserIdByBusinessConnectionId } from "./users";
 
 export async function debugClientCommands(bot: Bot) {
-	bot.hears(/^:(\w+)\s*(.*)$/i, async (ctx) => {
-		const command = ctx.match[1]; // команда после ':'
-		const textAfterColon = ctx.match[2]; // текст после команды и пробелов
-		switch (command) {
-			case 'clear': {
-				await clearHandler(ctx);
-			} break;
-			case 'id': {
-				await ctx.reply(`ID чата: ${ctx.chat?.id}, ID пользователя: ${ctx.from?.id}, business_connection_id: ${ctx.businessConnectionId}`);
-			} break;
-			case 'last': {
-				let n = 20;
-				try {
-					n = parseInt(textAfterColon);
-					if (isNaN(n)) {
-						n = 20;
-					}
-				} catch (error) {
-					console.log(`textAfterColon: ${textAfterColon}`);
-					console.error('Error parsing last count:', JSON.stringify(error));
-				}
-				await lastHandler(ctx, n);
-			} break;
-			default: {
-				await helpHandler(ctx);
-			} break;
+	const commandHandler = async (ctx: Context, next: NextFunction) => {
+		console.log('debugClientCommands', ctx.message?.text);
+        const text = (ctx.message||ctx.businessMessage)?.text;
+		if (!text?.startsWith(':')) {
+			await next();
+			return;
 		}
-	});
+
+        const match = text.match(/^:(\w+)\s*(.*)$/i);
+        if (!match) {
+			await next();
+			return;
+		}
+
+        const command = match[1];
+        const textAfterColon = match[2];
+
+        switch (command) {
+            case 'clear': {
+                await clearHandler(ctx);
+            } break;
+            case 'id': {
+                await ctx.reply(`ID чата: ${ctx.chat?.id}, ID пользователя: ${ctx.from?.id}, business_connection_id: ${ctx.businessConnectionId}`);
+            } break;
+            case 'last': {
+                let n = 20;
+                try {
+                    n = parseInt(textAfterColon);
+                    if (isNaN(n)) {
+                        n = 20;
+                    }
+                } catch (error) {
+                    console.log(`textAfterColon: ${textAfterColon}`);
+                    console.error('Error parsing last count:', JSON.stringify(error));
+                }
+                await lastHandler(ctx, n);
+            } break;
+            default: {
+                await helpHandler(ctx);
+            } break;
+        }
+    };
+
+    // Обработка обычных сообщений
+    bot.on('message', commandHandler);
+    // Обработка бизнес-сообщений
+    bot.on('business_message', commandHandler);
 }
   
   async function helpHandler(ctx: Context) {
@@ -85,7 +104,7 @@ export async function debugClientCommands(bot: Bot) {
 	  let replyText = `Последние ${n} сообщений:\n`;
 	  messages.forEach(msg => {
 		const date = new Date(msg.timestamp); // YDB timestamp is in microseconds
-		replyText += `\n[${date.toLocaleString()}] ${msg.type}: ${msg.message}`;
+		replyText += `\n[${date.toLocaleString()}] ${msg.who.role}: ${msg.message}`;
 	  });
   
 	  await ctx.reply(replyText);

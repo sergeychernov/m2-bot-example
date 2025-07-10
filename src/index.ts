@@ -1,30 +1,29 @@
 import { initializeClientsCommand } from './clients-command';
 import { setIamToken } from './gpt';
 import {
-    ChatMessageType,
     Client,
     getDriver,
     getMode,
     setClient,
     setMode, updateChatMessage,
+    updateUserBusinessConnection,
     UserMode,
 } from './ydb';
 
 import { iam } from './iam';
 import { Driver } from 'ydb-sdk';
 import { setupDatabase } from './setup-db';
-import { renderSettingsPage } from './settings.fe';
-import { handleSettingsPost } from './settings.be'; // <<< Добавлен этот импорт
 import { debugClientCommands } from './debug-client-commands';
 import { chatHandler } from './chat-handler';
-import { initializeQuiz } from './quiz-handler';
+import { initializeQuiz, startQuizWithFreshConfig } from './quiz-handler';
 import { initializeStartCommand } from './start-command';
 import { bot } from './bot-instance';
-import {processAllUnansweredChats} from "./process-unanswered-messages";
 import { handleVoiceMessage } from './voice-handler';
-import { TelegramVoice, isUserProfileComplete } from './telegram-utils';
-import { Context } from 'grammy';
+import { TelegramVoice, isUserProfileComplete, Who } from './telegram-utils';
+import { Api, Bot, Context, RawApi } from 'grammy';
 import { initializeActivateCommand } from './activate-command';
+import { Message } from 'grammy/types';
+import { getUserIdByBusinessConnectionId } from './users';
 
 // Глобальная переменная для отслеживания инициализации
 let botInitialized = false;
@@ -48,10 +47,13 @@ async function initializeBot() {
       { command: 'activate', description: 'Привязать бизнес аккаунт к боту' }
     ]);
     console.log('Bot commands set.');
-    // Команды /quiz и /start
+    // Сначала регистрируем обработчики команд
     initializeStartCommand(bot);
     initializeQuiz(bot);
     initializeActivateCommand(bot);
+    initializeClientsCommand(bot);
+    debugClientCommands(bot);
+    initializeChat(bot);
     botInitialized = true;
   } catch (error) {
     console.error('Failed to initialize bot or set commands:', error);
@@ -60,14 +62,6 @@ async function initializeBot() {
   }
 }
 
-// Сначала регистрируем обработчики команд
-initializeStartCommand(bot);
-initializeQuiz(bot);
-initializeActivateCommand(bot);
-
-initializeClientsCommand(bot);
-
-debugClientCommands(bot);
 
 // Команда /help
 bot.command('help', async (ctx) => {
@@ -108,45 +102,108 @@ bot.command('demo', async (ctx) => {
   }
 });
 
-// Новый обработчик для сообщений, начинающихся с 'y:'
-const yandexGptRegex = /^(.*)/i;
-// от бота не перехватывает
-bot.hears(yandexGptRegex, async (ctx, next) => {
-    console.log('Received Yandex GPT command:', JSON.stringify(ctx));
-  const businessConnectionId = ctx.businessConnectionId || ctx.message?.business_connection_id;
-  let type: ChatMessageType;
+async function chat(ctx: Context, who: Who, message: Message) {
+  console.log('chat.message:', JSON.stringify(message));
+  
+  if (message.voice) {
+    const { file_id, duration, mime_type, file_size } = message.voice as TelegramVoice;
+    if (duration < 30 && (file_size ?? 0) < 1000000 && mime_type) {
+      const chatId = message.chat.id;
+      
+      console.log('Voice message received, processing with SpeechKit...');
+      
+      try {
+        if (who.room === 'chat' && who.role === 'client') {
+          const userId = await getUserIdByBusinessConnectionId(ctx?.businessConnectionId||'')||0;
+          const recognized = await handleVoiceMessage(file_id, chatId, mime_type, userId, ctx);
+          if (recognized?.recognizedText) {
+            message = {...message, text: recognized?.recognizedText};
+          }
+        }
+        
+      } catch (voiceError) {
+          console.error('Error processing voice message:', voiceError);
+      }
+    } else {
+      console.log('TODO: async voice processing')
+    }
+  }   
+  try {
+          await Promise.all([setClient(ctx.from as Client), chatHandler(ctx, who, message)]);
+        } catch (error) {
+          console.error('Error in chat:', JSON.stringify(error));
+        }
+}
+
+async function initializeChat(bot: Bot<Context, Api<RawApi>>) {
+  // Обработчик диалога пользователя с клиентом
+bot.on('business_message', async (ctx, next) => {
+  console.log('business_message.Received message:', JSON.stringify(ctx));
+
+  const businessConnectionId = ctx.businessConnectionId;
+  const businessMessage = ctx.businessMessage;
+  const fromId = businessMessage.from?.id;
+
+  let who: Who;
   if (!businessConnectionId) {
-    type = 'admin';
-  } else if (ctx.from?.is_bot) {
-    type = 'bot';
-  } else if (ctx.from?.id === ctx.chat?.id) {
-    type = 'client';
+    console.error('!businessConnectionId');
+    await next();
+    return;
+  } else if (fromId === ctx.chat?.id) {
+    who = {room:'chat', role:'client', isBot:false};
   } else {
-    type = 'realtor'
+    who = {room:'chat', role:'user', isBot:false};
   }
-  console.log('type:', type);
-  switch (type) {
+  console.log('who, businessConnectionId:', who, businessConnectionId);
+
+  
+
+  switch (who.role) {
     case 'client':
-      if (businessConnectionId) {
-        setClient(ctx.from as Client);
-        await chatHandler(ctx, type);
+        await chat(ctx, who, businessMessage);
+      break;
+    case 'user':
+      // Проверяем, что chat.username равен m2assist
+      if (fromId) {
+        if((await getMode(fromId)) === 'activation'
+          && (businessMessage?.chat?.username === 'm2assist' || businessMessage?.chat?.username === 'petrovpaveld')
+          && !who.isBot) {
+            
+          await updateUserBusinessConnection(fromId, businessConnectionId);
+            
+          // Отправляем ответ с business_connection_id и from.id
+          const responseText = `Ваш бизнес аккаунт связан с панелью администратора, теперь можете настроить бота, теперь ваши клиенты никуда не денутся от вас`;
+            
+          // Отправляем сообщение напрямую пользователю через обычного бота
+          await Promise.all([bot.api.sendMessage(fromId, responseText), setMode(fromId, 'idle')]);
+          } else {
+            console.warn('TODO: отвечает пользователь, надо добавить в диалог и приостановить работу бота.')
+        }
       }
       break;
-    case 'realtor':
-      break;
-    case 'admin':
-      const userId = ctx.from?.id;
-      const mode:UserMode = userId?await getMode(userId):'none';
-      if (mode === 'demo') {
-        setClient(ctx.from as Client);
-        await chatHandler(ctx, type);
-        //console.log('demo', JSON.stringify(ctx));
-        //await ctx.reply('Режим демонстрации: вы не можете общаться с администратором.');
-      }
-      break;
-
+    default:
+      await next();
+       break;
   }
+});
 
+// Обработчик для админки с ботом
+bot.on('message', async (ctx, next) => {
+  console.log('message.Received message:', JSON.stringify(ctx));
+  const userId = ctx.from?.id;
+  const mode: UserMode = userId ? await getMode(userId) : 'none';
+  let who: Who = {room:'bot', role:mode==='demo'? 'client' : 'user', isBot: false};
+
+  console.log('who, userId, mode:', who, userId, mode);
+  switch (who.role) {
+    case 'client':
+      await chat(ctx, who, ctx.message);
+      break;
+    default:
+    case 'user':
+      await bot.api.sendMessage(userId, '❌ Общаться с ботом можно только в демо режиме, выполните команду /demo.');
+      break;
+  }
   await next();
 });
 
@@ -161,9 +218,10 @@ bot.on('edited_message', async (ctx: Context) => {
         await updateChatMessage(chatId, messageId, businessConnectionId || '', newText);
     }
 });
+}
+
 
 let dbDriver: Driver | undefined;
-// let initialPromptAdded = false; // Удаляем этот флаг
 
 // Обновленный обработчик Cloud Function
 export async function handler(event: any, context?: Context) {
@@ -192,39 +250,7 @@ export async function handler(event: any, context?: Context) {
             updateString = JSON.stringify(event.body);
         }
         const update = JSON.parse(updateString);
-      console.log('Parsed update:', JSON.stringify(update));
-
-        // Преобразуем business_message в стандартный формат сообщения Telegram
-    if (update.business_message) {
-          // Обработка голосового сообщения
-            if (update.business_message.voice) {
-              const { file_id, duration, mime_type, file_size } = update.business_message.voice as TelegramVoice;
-              if (duration < 30 && (file_size ?? 0) < 1000000 && mime_type) {
-                const chatId = update.business_message.chat.id;
-                const businessConnectionId = update.business_message.business_connection_id;
-                
-                console.log('Voice message received, processing with SpeechKit...');
-                
-                try {
-                  const recognized = await handleVoiceMessage(file_id, chatId, mime_type, businessConnectionId, context);
-                  if (recognized?.recognizedText) {
-                    update.business_message.text = recognized?.recognizedText;
-                  }
-                } catch (voiceError) {
-                    console.error('Error processing voice message:', voiceError);
-                }
-              } else {
-                console.log('TODO: async voice processing')
-              }
-            }
-      
-            update.message = {
-                ...update.business_message,
-                business_connection_id: update.business_message.business_connection_id
-            };
-            
-            
-        }
+    console.log('Parsed update:', JSON.stringify(update));
 
         await bot.handleUpdate(update);
         return { statusCode: 200, body: 'OK' };

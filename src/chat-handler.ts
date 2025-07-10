@@ -1,22 +1,24 @@
 import { Context } from 'grammy';
 import {
 	addChatMessage,
-	ChatMessageType,
 	getLastChatMessages,
 	markMessagesAsAnswered,
 	getUnansweredMessages,
-	getMode
+	getMode,
+	ChatMessage
 } from './ydb';
-import {getGPTResponse} from "./gpt";
+import {getGPTResponse, UserMessage} from "./gpt";
+import { Who } from './telegram-utils';
+import { Message } from 'grammy/types';
 
-export async function chatHandler(ctx: Context, type: ChatMessageType) {
+export async function chatHandler(ctx: Context, who: Who, message:Message) {
 	const chatId = ctx.chat?.id || 0;
 	const businessConnectionId = ctx.businessConnectionId || '';
-	const messageId = ctx.message?.message_id || 0;
-	const repliedText = ctx.message?.reply_to_message?.text || '';
-	const text = ctx.message?.text || '';
+	const messageId = message?.message_id || 0;
+	const repliedText = message?.reply_to_message?.text || '';
+	const text = message?.text || '';
 
-	await addChatMessage(chatId, messageId, businessConnectionId, text, type, repliedText);
+	await addChatMessage(chatId, messageId, businessConnectionId, text, who, repliedText);
 }
 
 export async function handleBatchMessages(
@@ -27,15 +29,15 @@ export async function handleBatchMessages(
 	try {
 		const mode = await getMode(chatId);
 		const historyMessages = await getLastChatMessages(chatId, businessConnectionId, 30);
-		const gptMessages = historyMessages.map((v: any) => {
+		const gptMessages: UserMessage[] = historyMessages.map((v: ChatMessage) => {
 			if (v.replied_message) {
 				return {
-					role: (v.type === 'client' || (mode === 'demo' && v.type === 'admin') ? 'user' : 'assistant') as 'user' | 'assistant',
+					role: (v.who.role === 'client') ? 'user' : 'assistant',
 					text: `Пользователь ответил на сообщение "${v.message}": ${v.replied_message}`
 				}
 			}
 			return {
-				role: (v.type === 'client' || (mode === 'demo' && v.type === 'admin') ? 'user' : 'assistant') as 'user' | 'assistant',
+				role: (v.who.role === 'client' ? 'user' : 'assistant'),
 				text: v.message
 			}
 		});
@@ -49,7 +51,7 @@ export async function handleBatchMessages(
 			await imitateTypingBatch(bot, chatId, 0, delay, businessConnectionId);
 
 			const currentUnanswered = await getUnansweredMessages(chatId, businessConnectionId);
-			const currentIds = currentUnanswered.map((m: any) => m.messageId);
+			const currentIds = currentUnanswered.map((m) => m.messageId);
 			if (
 				currentIds.length > messageIds.length ||
 				!messageIds.every(id => currentIds.includes(id))
@@ -63,13 +65,18 @@ export async function handleBatchMessages(
 				const sentMessage = businessConnectionId
 					? await bot.api.sendMessage(chatId, gptResponse.text, { business_connection_id: businessConnectionId })
 					: await bot.api.sendMessage(chatId, gptResponse.text);
+				const who:Who = {
+					room: 'chat',
+					role: 'user',
+					isBot: true,
+				};
 
 				await addChatMessage(
 					chatId,
 					sentMessage.message_id,
 					businessConnectionId,
 					gptResponse.text,
-					'bot'
+					who
 				);
 
 				await markMessagesAsAnswered(chatId, businessConnectionId, messageIds);

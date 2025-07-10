@@ -513,6 +513,73 @@ export const migrations: Migration[] = [
     },
     {
         version: 13,
+        name: 'RecreateChatsTableWithTypeToWhoJson',
+        async up(driver: Driver, logger: Logger) {
+            logger.info(`Applying migration: RecreateChatsTableWithTypeToWhoJson`);
+
+            await driver.queryClient.do({ fn: async (session: QuerySession) => {
+                logger.info('Dropping temporary chats_new table if it exists...');
+                await session.execute({ text: 'DROP TABLE IF EXISTS chats_new;' });
+
+                logger.info('Creating temporary chats_new table with who column...');
+                await session.execute({ text: `
+                    CREATE TABLE chats_new (
+                        chatId Int64,
+                        messageId Int64,
+                        business_connection_id Utf8,
+                        message Utf8,
+                        timestamp Timestamp,
+                        who Json,
+                        answered Bool,
+                        replied_message Utf8,
+                        PRIMARY KEY (chatId, messageId, business_connection_id)
+                    );
+                `});
+
+                logger.info('Copying data from chats to chats_new and converting type to who...');
+                await session.execute({ text: `
+                    UPSERT INTO chats_new (chatId, messageId, business_connection_id, message, timestamp, who, answered, replied_message)
+                    SELECT
+                        chatId,
+                        messageId,
+                        business_connection_id,
+                        message,
+                        timestamp,
+                        CASE type
+                            WHEN 'client' THEN CAST('{"room":"chat","role":"client","isBot":false}' AS Json)
+                            WHEN 'user' THEN CAST('{"room":"chat","role":"user","isBot":true}' AS Json)
+                            WHEN 'admin' THEN CAST('{"room":"bot","role":"client","isBot":false}' AS Json)
+                            WHEN 'bot' THEN CAST('{"room":"bot","role":"user","isBot":true}' AS Json)
+                            ELSE CAST('{"room":"chat","role":"user","isBot":true}' AS Json)
+                        END,
+                        answered,
+                        replied_message
+                    FROM chats;
+                `});
+
+                logger.info('Dropping old chats table...');
+                await session.execute({ text: 'DROP TABLE chats;' });
+
+                logger.info('Renaming chats_new to chats...');
+                await session.execute({ text: 'ALTER TABLE chats_new RENAME TO chats;' });
+
+                logger.info('Migration RecreateChatsTableWithTypeToWhoJson applied successfully');
+            }}).catch(async (error) => {
+                logger.error('Failed to apply migration RecreateChatsTableWithTypeToWhoJson:', JSON.stringify(error));
+                try {
+                    await driver.queryClient.do({ fn: async (session: QuerySession) => {
+                        logger.info('Attempting to clean up by dropping chats_new table...');
+                        await session.execute({ text: 'DROP TABLE IF EXISTS chats_new;' });
+                    }});
+                } catch (cleanupError) {
+                    logger.error('Failed to cleanup chats_new table after migration failure:', JSON.stringify(cleanupError));
+                }
+                throw error;
+            });
+        },
+    },
+    {
+        version: 14,
         name: 'AddPromptTextsToPromptsTable',
         async up(driver: Driver, logger: Logger) {
             logger.info(`Applying migration: AddPromptTextsToPromptsTable`);

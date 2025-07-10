@@ -125,7 +125,7 @@ export async function recognizeSpeech(audioBuffer: ArrayBuffer, mime_type: strin
     }
 }
 
-export async function handleVoiceMessage(fileId: string, chatId: number, mime_type:string, businessConnectionId?: string, context?: Context) {
+export async function handleVoiceMessage(fileId: string, chatId: number, mime_type:string, userId: number, context?: Context) {
     try {
         // Получаем IAM токен
         const iamToken = iam(context);
@@ -168,17 +168,11 @@ export async function handleVoiceMessage(fileId: string, chatId: number, mime_ty
             // Если текст не распознан
             const errorText = '❌ Не удалось распознать речь в голосовом сообщении';
             
-            if (businessConnectionId) {
-                // Получаем userId владельца бота по businessConnectionId
-                const userId = await getUserIdByBusinessConnectionId(businessConnectionId);
-                if (userId) {
-                    // Отправляем ошибку в личный чат владельца бота
-                    await bot.api.sendMessage(userId, errorText);
-                } else {
-                    console.error('Не удалось найти userId для businessConnectionId:', businessConnectionId);
-                }
+            if (userId) {
+                // Отправляем ошибку в личный чат владельца бота
+                await bot.api.sendMessage(userId, errorText);
             } else {
-                await bot.api.sendMessage(chatId, errorText);
+                console.error('bot.api.sendMessage(userId, errorText):', JSON.stringify(errorText));
             }
             
             return {
@@ -195,9 +189,9 @@ export async function handleVoiceMessage(fileId: string, chatId: number, mime_ty
         // Отправляем сообщение об ошибке пользователю
         const errorText = '❌ Произошла ошибка при обработке голосового сообщения';
         try {
-            if (businessConnectionId) {
+            if (context?.businessConnectionId) {
                 await bot.api.sendMessage(chatId, errorText, { 
-                    business_connection_id: businessConnectionId 
+                    business_connection_id: context.businessConnectionId 
                 });
             } else {
                 await bot.api.sendMessage(chatId, errorText);
