@@ -41,19 +41,14 @@ async function loadGptSettingsFromDb(promptType: string, iamToken?: string): Pro
     }
 }
 
-export function formatSystemPrompt(basePrompt: string, userData: Record<string, any>, additionalPrompt: string): string[] {
-    let base = basePrompt;
-    let additional = additionalPrompt;
+export function formatSystemPrompt(promptTemplate: string, userData: Record<string, any>): string {
+    let prompt = promptTemplate;
     for (const key in userData) {
-        base = base.replace(new RegExp(`{{${key}}}`, 'g'), userData[key]);
-        if (additional) additional = additional.replace(new RegExp(`{{${key}}}`, 'g'), userData[key]);
+        prompt = prompt.replace(new RegExp(`{{${key}}}`, 'g'), userData[key]);
     }
     const profileData = formatProfileMarkdownV2(userData);
-    base = base.replace(/{{profile}}/g, profileData);
-    if (additional) {
-        additional = additional.replace(/{{profile}}/g, profileData);
-    }
-    return [base, ...(additional && additional.trim() ? [additional] : [])];
+    prompt = prompt.replace(/{{profile}}/g, profileData);
+    return prompt;
 }
 
 // Обновленная функция getYandexGPTResponse
@@ -329,7 +324,9 @@ export async function getGPTResponse(
         }
 
         const additionalPrompt = getAdditionalPrompt(gptSettings, userMessages);
-        const systemPromptParts = formatSystemPrompt(gptSettings.promptText, userData?.profile || {}, additionalPrompt);
+        const basePromptText = formatSystemPrompt(gptSettings.promptText, userData?.profile || {});
+        const additionalPromptText = additionalPrompt ? formatSystemPrompt(additionalPrompt, userData?.profile || {}) : undefined;
+        const systemPromptParts = [basePromptText, additionalPromptText].filter((x): x is string => typeof x === 'string' && x.trim().length > 0);
 
         let response;
         if (gptSettings.model.startsWith('gemini')) {
