@@ -22,7 +22,7 @@ async function ensureChatsTableExists(iamToken?: string): Promise<void> {
 			  .withColumn(new Column('business_connection_id', Types.UTF8))
 			  .withColumn(new Column('message', Types.UTF8))
 			  .withColumn(new Column('timestamp', Types.TIMESTAMP))
-			  .withColumn(new Column('type', Types.UTF8))
+			  .withColumn(new Column('who', Types.JSON))
 			  .withColumn(new Column('answered', Types.BOOL))
 			  .withColumn(new Column('replied_message', Types.UTF8))
 			  .withPrimaryKeys('chatId', 'messageId', 'business_connection_id')
@@ -57,6 +57,8 @@ async function ensurePromptsTableExists(iamToken?: string): Promise<void> {
 			new TableDescription()
 			  .withColumn(new Column('promptId', Types.UTF8))
 			  .withColumn(new Column('promptText', Types.UTF8))
+			  .withColumn(new Column('greetingPrompt', Types.UTF8))
+			  .withColumn(new Column('dialogPrompt', Types.UTF8))
 			  .withColumn(new Column('promptType', Types.UTF8))
 			  .withColumn(new Column('createdAt', Types.TIMESTAMP))
 			  .withColumn(new Column('model', Types.UTF8)) // Новое поле

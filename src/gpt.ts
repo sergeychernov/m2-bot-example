@@ -1,17 +1,9 @@
-import {
-    getLatestPromptByType,
-    Prompt,
-    getDriver,
-    logger,
-    getMode
-} from './ydb';
-import {
-  Types
-} from 'ydb-sdk';
-import { formatProfileMarkdownV2 } from "./telegram-utils";
-import { getUserDataByBusinessConnectionId, getUserDataByUserId } from './users';
+import {getDriver, getLatestPromptByType, getMode, logger, Prompt} from './ydb';
+import {Types} from 'ydb-sdk';
+import {formatProfileMarkdownV2} from "./telegram-utils";
+import {getUserDataByBusinessConnectionId, getUserDataByUserId} from './users';
 import fetch from 'node-fetch';
-import { SocksProxyAgent } from 'socks-proxy-agent';
+import {SocksProxyAgent} from 'socks-proxy-agent';
 
 // ID вашего каталога в Yandex Cloud
 const FOLDER_ID = process.env.YC_FOLDER_ID; // Оставляем, если используется для x-folder-id или если modelUri в json не полный
@@ -49,15 +41,13 @@ async function loadGptSettingsFromDb(promptType: string, iamToken?: string): Pro
     }
 }
 
-export function formatSystemPrompt(basePrompt: string, userData: Record<string, any>): string {
-    let prompt = basePrompt;
+export function formatSystemPrompt(promptTemplate: string, userData: Record<string, any>): string {
+    let prompt = promptTemplate;
     for (const key in userData) {
         prompt = prompt.replace(new RegExp(`{{${key}}}`, 'g'), userData[key]);
     }
-
     const profileData = formatProfileMarkdownV2(userData);
     prompt = prompt.replace(/{{profile}}/g, profileData);
-
     return prompt;
 }
 
@@ -150,7 +140,7 @@ interface GeminiSuccessResponse {
 
 async function getGeminiResponse(
     userMessages: { role: 'user' | 'assistant'; text: string }[],
-    systemPromptText: string,
+    systemPromptParts: string[],
     gptSettings: Prompt
 ): Promise<GPTResponse> {
     if (!GEMINI_API_KEY) {
@@ -175,11 +165,7 @@ async function getGeminiResponse(
     const body = {
         contents: contents,
         systemInstruction: {
-            parts: [
-                {
-                    text: systemPromptText
-                }
-            ]
+            parts: systemPromptParts.map(text => ({ text }))
         },
         generationConfig: {
             temperature: gptSettings.temperature,
@@ -223,7 +209,7 @@ async function getGeminiResponse(
 
 async function getYandexGPTResponse(
     userMessages: { role: 'user' | 'assistant'; text: string }[],
-    systemPromptText: string,
+    systemPromptParts: string[],
     gptSettings: Prompt
 ): Promise<GPTResponse> {
     if (!currentIamToken) {
@@ -238,6 +224,8 @@ async function getYandexGPTResponse(
 
     const url = 'https://llm.api.cloud.yandex.net/foundationModels/v1/completion';
 
+    const systemMessages = systemPromptParts.map(text => ({ role: 'system', text }));
+
     const requestBody = {
         modelUri: `gpt://${FOLDER_ID}${gptSettings.model}`,
         completionOptions: {
@@ -246,10 +234,7 @@ async function getYandexGPTResponse(
             maxTokens: gptSettings.maxTokens,
         },
         messages: [
-            {
-                role: 'system',
-                text: systemPromptText
-            },
+            ...systemMessages,
             ...userMessages
         ],
     };
@@ -338,20 +323,21 @@ export async function getGPTResponse(
             console.warn(`No user data found for businessConnectionId: ${businessConnectionId} or userId: ${chatId}. Proceeding without it.`);
         }
 
-        const systemPromptText = formatSystemPrompt(gptSettings.promptText, userData?.profile || {});
+        const additionalPrompt = getAdditionalPrompt(gptSettings, userMessages);
+        const basePromptText = formatSystemPrompt(gptSettings.promptText, userData?.profile || {});
+        const additionalPromptText = additionalPrompt ? formatSystemPrompt(additionalPrompt, userData?.profile || {}) : undefined;
+        const systemPromptParts = [basePromptText, additionalPromptText].filter((x): x is string => typeof x === 'string' && x.trim().length > 0);
 
         let response;
         if (gptSettings.model.startsWith('gemini')) {
-            response = await getGeminiResponse(userMessages, systemPromptText, gptSettings);
+            response = await getGeminiResponse(userMessages, systemPromptParts, gptSettings);
         } else {
-            response = await getYandexGPTResponse(userMessages, systemPromptText, gptSettings);
+            response = await getYandexGPTResponse(userMessages, systemPromptParts, gptSettings);
         }
 
         if (response && response.text && !response.error) {
 
                 try {
-                    // Assuming you can get token counts from somewhere for Yandex
-                    // This part needs adjustment if you can't get the token counts before this call
                     await logBudget(
                         chatId,
                         businessConnectionId,
@@ -377,4 +363,15 @@ export async function getGPTResponse(
         const errorMessage = error instanceof Error ? error.message : String(error);
         return { text: `Ошибка: ${errorMessage} ${businessConnectionId}`, error: true, inputTextTokens: 0, completionTokens: 0, totalTokens: 0 };
     }
+}
+
+export function getAdditionalPrompt(
+    gptSettings: Prompt,
+    userMessages: { role: 'user' | 'assistant'; text: string }[],
+): string {
+    const assistantMessages = userMessages.filter((m: any) => m.role === 'assistant');
+    const isFirstClientMessage = assistantMessages.length === 0;
+    return isFirstClientMessage
+        ? gptSettings?.greetingPrompt || ''
+        : gptSettings?.dialogPrompt || '';
 }

@@ -11,6 +11,13 @@ const AVAILABLE_MODELS = {
 
 const DEFAULT_MODEL = '/yandexgpt-lite/latest';
 
+const AVAILABLE_TABS = [
+  { key: 'quiz', label: '🎯 Квиз' },
+  { key: 'base', label: '📝 Основной промпт' },
+  { key: 'promptDetails', label: '🛠️ Уточнения к промпту' },
+  { key: 'summary', label: '📝 Промпт для саммари' },
+];
+
 export async function renderSettingsPage(event: any): Promise<any> {
   const queryParams = event.queryStringParameters || {};
   const view = queryParams.view || 'base'; // 'base', 'summary', or 'quiz'
@@ -96,6 +103,37 @@ export async function renderSettingsPage(event: any): Promise<any> {
           </div>
         </div>
         <button type="submit">💾 Сохранить конфигурацию квиза</button>
+      </form>
+    `;
+  } else if (view === 'promptDetails') {
+    pageTitle = 'Уточнения к промпту';
+    const currentPrompt = await getLatestPromptByType('base') as Prompt;
+    const greetingText = currentPrompt?.greetingPrompt || '';
+    const dialogText = currentPrompt?.dialogPrompt || '';
+    formContent = `
+      <form method="POST" style="flex-grow: 1; display: flex; flex-direction: column; padding: 20px; box-sizing: border-box;">
+        <input type="hidden" name="formType" value="promptDetails">
+        <div class="settings-section" style="flex-grow: 1; display: flex; flex-direction: column;">
+          <h3>🛠️ Уточнения к промпту</h3>
+          <div class="prompt-info" style="margin-bottom: 15px;">
+            <strong>Эти уточнения будут автоматически добавлены к основному промпту в зависимости от ситуации:</strong><br>
+            <ul style="margin: 8px 0 0 20px;">
+              <li><b>Приветствие</b> — используется только в самом первом сообщении диалога.</li>
+              <li><b>Диалог</b> — используется для всех последующих сообщений (без приветствия).</li>
+            </ul>
+          </div>
+          <div class="form-columns-container" style="display: flex; gap: 20px;">
+            <div class="form-group" style="flex: 1; display: flex; flex-direction: column;">
+              <label for="greetingText">Приветствие:</label>
+              <textarea id="greetingText" name="greetingText" placeholder="Введите уточнение для приветствия..." style="flex-grow: 1; min-height: 200px;">${greetingText}</textarea>
+            </div>
+            <div class="form-group" style="flex: 1; display: flex; flex-direction: column;">
+              <label for="dialogText">Диалог:</label>
+              <textarea id="dialogText" name="dialogText" placeholder="Введите уточнение для диалога..." style="flex-grow: 1; min-height: 200px;">${dialogText}</textarea>
+            </div>
+          </div>
+        </div>
+        <button type="submit">💾 Сохранить уточнения</button>
       </form>
     `;
   }
@@ -250,9 +288,9 @@ export async function renderSettingsPage(event: any): Promise<any> {
         <div class="header-container">
             <h1>Настройки</h1>
             <div class="tabs">
-                <a href="${baseUrl}?view=quiz" class="tab-link ${view === 'quiz' ? 'active' : ''}">🎯 Квиз</a>
-                <a href="${baseUrl}?view=base" class="tab-link ${view === 'base' ? 'active' : ''}">🤖 Основной промпт</a>
-                <a href="${baseUrl}?view=summary" class="tab-link ${view === 'summary' ? 'active' : ''}">📝 Промпт для саммари</a>
+                ${AVAILABLE_TABS.map(tab =>
+                  `<a href="${baseUrl}?view=${tab.key}" class="tab-link ${view === tab.key ? 'active' : ''}">${tab.label}</a>`
+                ).join('')}
             </div>
         </div>
         ${formContent}

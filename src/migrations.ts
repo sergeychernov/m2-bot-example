@@ -577,5 +577,47 @@ export const migrations: Migration[] = [
                 throw error;
             });
         },
-    }
+    },
+    {
+        version: 14,
+        name: 'AddPromptTextsToPromptsTable',
+        async up(driver: Driver, logger: Logger) {
+            logger.info(`Applying migration: AddPromptTextsToPromptsTable`);
+            try {
+                await driver.queryClient.do({
+                    fn: async (session: QuerySession) => {
+                        const addGreetingColumn = `ALTER TABLE prompts ADD COLUMN greetingPrompt Utf8;`;
+                        logger.info('Executing query:\n' + addGreetingColumn);
+                        await session.execute({ text: addGreetingColumn });
+
+                        const addDialogColumn = `ALTER TABLE prompts ADD COLUMN dialogPrompt Utf8;`;
+                        logger.info('Executing query:\n' + addDialogColumn);
+                        await session.execute({ text: addDialogColumn });
+
+                        const updateQuery = `
+                            UPDATE prompts
+                            SET greetingPrompt = '', dialogPrompt = ''
+                            WHERE greetingPrompt IS NULL OR dialogPrompt IS NULL;
+                        `;
+                        logger.info('Executing query:\n' + updateQuery);
+                        await session.execute({ text: updateQuery });
+
+                        logger.info('Migration AddPromptTextsToPromptsTable applied successfully');
+                    }
+                });
+            } catch (error) {
+                if (error instanceof Error) {
+                    if (error.message.includes('already exists') || error.message.includes('Cannot add column to table')) {
+                        logger.warn(`Could not add column, it might already exist or there's another schema issue: ${error.message}`);
+                    } else {
+                        logger.error('Failed to apply migration AddPromptTextsToPromptsTable:', error);
+                        throw error;
+                    }
+                } else {
+                    logger.error('Failed to apply migration AddPromptTextsToPromptsTable with a non-Error object:', error);
+                    throw error;
+                }
+            }
+        },
+    },
 ];

@@ -189,6 +189,36 @@ export async function getLastChatMessages(
   }
 }
 
+export async function getAllUnansweredMessages(): Promise<ChatMessage[]> {
+  const currentDriver = await getDriver();
+  const tableName = 'chats';
+  const query = `
+    SELECT chatId, business_connection_id, messageId, message, timestamp, who, answered, replied_message
+    FROM ${tableName}
+    WHERE answered = false
+    ORDER BY chatId, business_connection_id, timestamp ASC;
+  `;
+  const messages: ChatMessage[] = [];
+  await currentDriver.tableClient.withSession(async (session) => {
+    const { resultSets } = await session.executeQuery(query);
+    if (resultSets[0]?.rows) {
+      for (const row of resultSets[0].rows) {
+        messages.push({
+          chatId: Number(row.items![0].int64Value),
+          business_connection_id: row.items![1].textValue!,
+          messageId: Number(row.items![2].int64Value),
+          message: row.items![3].textValue!,
+          timestamp: new Date(Number(row.items![4].uint64Value) / 1000),
+          who: JSON.parse(row.items![5].textValue!),
+          answered: row.items![6].boolValue!,
+          replied_message: row.items?.[7]?.textValue ?? ''
+        });
+      }
+    }
+  });
+  return messages;
+}
+
 export async function clearChatMessages(chatId: number): Promise<void> {
   const driver = await getDriver();
   const tableName = 'chats'; // Имя вашей таблицы
@@ -232,6 +262,8 @@ export interface ChatMessage {
 export interface Prompt {
   promptId: string;
   promptText: string;
+  greetingPrompt?: string;
+  dialogPrompt?: string;
   promptType: string;
   createdAt: Date;
   model: string; // Новое поле
@@ -253,6 +285,10 @@ export async function addPrompt(
   const promptId = crypto.randomUUID(); // Генерируем UUID для promptId
   const createdAt = new Date();
 
+  const lastPrompt = await getLatestPromptByType(promptType, iamToken);
+  const greetingPrompt = lastPrompt?.greetingPrompt ?? '';
+  const dialogPrompt = lastPrompt?.dialogPrompt ?? '';
+
   try {
     await currentDriver.tableClient.withSession(async (session) => {
       const query = `
@@ -264,9 +300,11 @@ export async function addPrompt(
         DECLARE $stream AS Bool;
         DECLARE $temperature AS Double;
         DECLARE $maxTokens AS Int64;
+        DECLARE $greetingPrompt AS Utf8;
+        DECLARE $dialogPrompt AS Utf8;
 
-        UPSERT INTO prompts (promptId, promptText, promptType, createdAt, model, stream, temperature, maxTokens)
-        VALUES ($promptId, $promptText, $promptType, $createdAt, $model, $stream, $temperature, $maxTokens);
+        UPSERT INTO prompts (promptId, promptText, promptType, createdAt, model, stream, temperature, maxTokens, greetingPrompt, dialogPrompt)
+        VALUES ($promptId, $promptText, $promptType, $createdAt, $model, $stream, $temperature, $maxTokens, $greetingPrompt, $dialogPrompt);
       `;
 
       const timestampMicroseconds = createdAt.getTime() * 1000;
@@ -279,7 +317,9 @@ export async function addPrompt(
         $model: { type: Types.UTF8, value: { textValue: model } },
         $stream: { type: Types.BOOL, value: { boolValue: stream } },
         $temperature: { type: Types.DOUBLE, value: { doubleValue: temperature } },
-        $maxTokens: { type: Types.INT64, value: { int64Value: maxTokens } }
+        $maxTokens: { type: Types.INT64, value: { int64Value: maxTokens } },
+        $greetingPrompt: { type: Types.UTF8, value: { textValue: greetingPrompt ?? '' } },
+        $dialogPrompt: { type: Types.UTF8, value: { textValue: dialogPrompt ?? '' } },
       });
       logger.info(`Prompt ${promptId} of type ${promptType} added to 'prompts' table.`);
     });
@@ -297,7 +337,7 @@ export async function getLatestPromptByType(promptType: string, iamToken?: strin
       const query = `
         DECLARE $promptType AS Utf8;
 
-        SELECT promptId, promptText, promptType, createdAt, model, \`stream\`, temperature, maxTokens
+        SELECT promptId, promptText, greetingPrompt, dialogPrompt, promptType, createdAt, model, \`stream\`, temperature, maxTokens
         FROM prompts
         WHERE promptType = $promptType
         ORDER BY createdAt DESC
@@ -314,12 +354,14 @@ export async function getLatestPromptByType(promptType: string, iamToken?: strin
           return {
             promptId: row.items[0].textValue || '',
             promptText: row.items[1].textValue || '',
-            promptType: row.items[2].textValue || '',
-            createdAt: new Date(Number(row.items[3].uint64Value) / 1000),
-            model: row.items[4].textValue || '',
-            stream: row.items[5].boolValue || false,
-            temperature: row.items[6].doubleValue || 0.6,
-            maxTokens: Number(row.items[7].int64Value) || 20000,
+            greetingPrompt: row.items[2]?.textValue || '',
+            dialogPrompt: row.items[3]?.textValue || '',
+            promptType: row.items[4].textValue || '',
+            createdAt: new Date(Number(row.items[5].uint64Value) / 1000),
+            model: row.items[6].textValue || '',
+            stream: row.items[7].boolValue || false,
+            temperature: row.items[8].doubleValue || 0.6,
+            maxTokens: Number(row.items[9].int64Value) || 20000,
           };
         }
       }
@@ -332,6 +374,28 @@ export async function getLatestPromptByType(promptType: string, iamToken?: strin
   }
 }
 
+export async function updatePromptDetails(
+  promptType: string,
+  greetingPrompt: string,
+  dialogPrompt: string,
+  iamToken?: string
+): Promise<void> {
+  const currentDriver = await getDriver(iamToken);
+  const lastPrompt = await getLatestPromptByType(promptType, iamToken);
+  if (!lastPrompt) throw new Error('No prompt found to update');
+  const query = `
+    UPDATE prompts
+    SET greetingPrompt = $greetingPrompt, dialogPrompt = $dialogPrompt
+    WHERE promptId = $promptId;
+  `;
+  await currentDriver.tableClient.withSession(async (session) => {
+    await session.executeQuery(query, {
+      $promptId: { type: Types.UTF8, value: { textValue: lastPrompt.promptId } },
+      $greetingPrompt: { type: Types.UTF8, value: { textValue: greetingPrompt } },
+      $dialogPrompt: { type: Types.UTF8, value: { textValue: dialogPrompt } },
+    });
+  });
+}
 
 export async function closeDriver() {
   if (driver) {
@@ -586,68 +650,6 @@ export async function getQuizConfig(iamToken?: string): Promise<any | null> {
     }
     return null;
   });
-}
-
-export async function getChatsWithUnansweredMessages(): Promise<{ chatId: number, business_connection_id: string }[]> {
-  const driver = await getDriver();
-  const query = `
-        SELECT chatId, business_connection_id
-        FROM chats
-        WHERE answered = false
-        GROUP BY chatId, business_connection_id;
-    `;
-  const result: { chatId: number, business_connection_id: string }[] = [];
-  await driver.tableClient.withSession(async (session) => {
-    const { resultSets } = await session.executeQuery(query);
-    if (resultSets[0]?.rows) {
-      for (const row of resultSets[0].rows) {
-        result.push({
-          chatId: Number(row.items![0].int64Value),
-          business_connection_id: row.items![1].textValue!,
-        });
-      }
-    }
-  });
-  return result;
-}
-
-export interface UnansweredMessage {
-  chatId: number;
-  messageId: number;
-  business_connection_id: string;
-  message: string;
-  who: Who;
-  timestamp: Date;
-}
-
-export async function getUnansweredMessages(chatId: number, business_connection_id: string): Promise<UnansweredMessage[]> {
-  const driver = await getDriver();
-  const query = `
-        SELECT chatId, messageId, business_connection_id, message, who, timestamp
-        FROM chats
-        WHERE chatId = $chatId AND business_connection_id = $business_connection_id AND answered = false
-        ORDER BY timestamp ASC;
-    `;
-  const messages: UnansweredMessage[] = [];
-  await driver.tableClient.withSession(async (session) => {
-    const { resultSets } = await session.executeQuery(query, {
-      $chatId: { type: Types.INT64, value: { int64Value: chatId } },
-      $business_connection_id: { type: Types.UTF8, value: { textValue: business_connection_id } },
-    });
-    if (resultSets[0]?.rows) {
-      for (const row of resultSets[0].rows) {
-        messages.push({
-          chatId: Number(row.items![0].int64Value),
-          messageId: Number(row.items![1].int64Value),
-          business_connection_id: row.items![2].textValue!,
-          message: row.items![3].textValue!,
-          who: JSON.parse(row.items![4].textValue!),
-          timestamp: new Date(Number(row.items![5].uint64Value) / 1000),
-        });
-      }
-    }
-  });
-  return messages;
 }
 
 export async function markMessagesAsAnswered(chatId: number, business_connection_id: string, messageIds: number[]): Promise<void> {
