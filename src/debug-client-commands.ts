@@ -1,6 +1,7 @@
 import { Bot, Context, NextFunction } from "grammy";
 import { clearChatMessages, getLastChatMessages } from "./ydb";
 import { getBusinessConnectionIdByUserId, getUserIdByBusinessConnectionId } from "./users";
+import { getClient, setClient } from './ydb';
 
 export async function debugClientCommands(bot: Bot) {
 	const commandHandler = async (ctx: Context, next: NextFunction) => {
@@ -40,6 +41,23 @@ export async function debugClientCommands(bot: Bot) {
                 }
                 await lastHandler(ctx, n);
             } break;
+            case 'quick': {
+                const chatId = ctx.chat?.id;
+                if (!chatId) {
+                  await ctx.reply('Не удалось определить ID чата.');
+                  break;
+                }
+                const client = await getClient(chatId);
+                if (client) {
+                  client.quickMode = !client.quickMode;
+                  await setClient(client);
+                  await ctx.reply(client.quickMode
+                    ? '⚡ Быстрый режим ВКЛЮЧЁН для этого чата.'
+                    : '⏳ Быстрый режим ВЫКЛЮЧЕН для этого чата.');
+                } else {
+                  await ctx.reply('Не удалось найти клиента для этого чата.');
+                }
+            } break;
             default: {
                 await helpHandler(ctx);
             } break;
@@ -57,7 +75,8 @@ export async function debugClientCommands(bot: Bot) {
 	  'Доступные команды:\n'
 	  + '*:clear* \\- очистить историю чата\n'
 		+ '*:last n* \\- показать последние n сообщений\n'
-	  + '*:id* \\- показать ID чата, ID пользователя и business_connection_id',
+	  + '*:id* \\- показать ID чата, ID пользователя и business_connection_id\n'
+      + '*:quick* \\- переключить быстрый режим для этого чата\n',
 	  { parse_mode: 'MarkdownV2' }
 	);
   }

@@ -1,7 +1,7 @@
 import { initializeClientsCommand } from './clients-command';
 import { setIamToken } from './gpt';
 import {
-    Client,
+    Client, getClient,
     getDriver,
     getMode,
     setClient,
@@ -129,10 +129,17 @@ async function chat(ctx: Context, who: Who, message: Message) {
     }
   }   
   try {
-          await Promise.all([setClient(ctx.from as Client), chatHandler(ctx, who, message)]);
-        } catch (error) {
-          console.error('Error in chat:', JSON.stringify(error));
-        }
+      const chatId = ctx.chat?.id;
+      if (!chatId) {
+          return;
+      }
+
+      const client = await getClient(chatId);
+      const quickMode = client?.quickMode;
+      await Promise.all([setClient({...ctx.from, quickMode} as Client), chatHandler(ctx, who, message, quickMode)]);
+  } catch (error) {
+      console.error('Error in chat:', JSON.stringify(error));
+  }
 }
 
 async function initializeChat(bot: Bot<Context, Api<RawApi>>) {

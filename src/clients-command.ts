@@ -82,7 +82,7 @@ export async function getClientsData(chatIds: number[]): Promise<Client[]> {
       
       const query = `
         ${declarations}
-        SELECT id, first_name, last_name, username, language_code
+        SELECT id, first_name, last_name, username, language_code, quickMode
         FROM clients
         WHERE id IN (${placeholders})
         ORDER BY id;
@@ -105,6 +105,7 @@ export async function getClientsData(chatIds: number[]): Promise<Client[]> {
             last_name: items[2]?.textValue || undefined,
             username: items[3]?.textValue || undefined,
             language_code: items[4]?.textValue || undefined,
+            quickMode: items[5]?.boolValue || false,
           };
           clients.push(client);
         }
