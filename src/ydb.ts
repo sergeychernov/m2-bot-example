@@ -189,16 +189,29 @@ export async function getLastChatMessages(
   }
 }
 
-export async function getAllUnansweredMessages(): Promise<ChatMessage[]> {
+// Новый тип для неотвеченных сообщений
+export interface UnansweredMessage {
+  chatId: number;
+  messageId: number;
+  business_connection_id: string;
+  message: string;
+  who: Who;
+  answered: boolean;
+  replied_message: string;
+  timestamp: Date;
+}
+
+// Получить все неотвеченные сообщения по всем чатам
+export async function getAllUnansweredMessages(): Promise<UnansweredMessage[]> {
   const currentDriver = await getDriver();
   const tableName = 'chats';
   const query = `
-    SELECT chatId, business_connection_id, messageId, message, timestamp, type, answered, replied_message
+    SELECT chatId, business_connection_id, messageId, message, timestamp, who, answered, replied_message
     FROM ${tableName}
     WHERE answered = false
     ORDER BY chatId, business_connection_id, timestamp ASC;
   `;
-  const messages: ChatMessage[] = [];
+  const messages: UnansweredMessage[] = [];
   await currentDriver.tableClient.withSession(async (session) => {
     const { resultSets } = await session.executeQuery(query);
     if (resultSets[0]?.rows) {
@@ -209,7 +222,7 @@ export async function getAllUnansweredMessages(): Promise<ChatMessage[]> {
           messageId: Number(row.items![2].int64Value),
           message: row.items![3].textValue!,
           timestamp: new Date(Number(row.items![4].uint64Value) / 1000),
-          type: row.items![5].textValue! as ChatMessageType,
+          who: JSON.parse(row.items![5].textValue!),
           answered: row.items![6].boolValue!,
           replied_message: row.items?.[7]?.textValue ?? ''
         });
@@ -650,68 +663,6 @@ export async function getQuizConfig(iamToken?: string): Promise<any | null> {
     }
     return null;
   });
-}
-
-export async function getChatsWithUnansweredMessages(): Promise<{ chatId: number, business_connection_id: string }[]> {
-  const driver = await getDriver();
-  const query = `
-        SELECT chatId, business_connection_id
-        FROM chats
-        WHERE answered = false
-        GROUP BY chatId, business_connection_id;
-    `;
-  const result: { chatId: number, business_connection_id: string }[] = [];
-  await driver.tableClient.withSession(async (session) => {
-    const { resultSets } = await session.executeQuery(query);
-    if (resultSets[0]?.rows) {
-      for (const row of resultSets[0].rows) {
-        result.push({
-          chatId: Number(row.items![0].int64Value),
-          business_connection_id: row.items![1].textValue!,
-        });
-      }
-    }
-  });
-  return result;
-}
-
-export interface UnansweredMessage {
-  chatId: number;
-  messageId: number;
-  business_connection_id: string;
-  message: string;
-  who: Who;
-  timestamp: Date;
-}
-
-export async function getUnansweredMessages(chatId: number, business_connection_id: string): Promise<UnansweredMessage[]> {
-  const driver = await getDriver();
-  const query = `
-        SELECT chatId, messageId, business_connection_id, message, who, timestamp
-        FROM chats
-        WHERE chatId = $chatId AND business_connection_id = $business_connection_id AND answered = false
-        ORDER BY timestamp ASC;
-    `;
-  const messages: UnansweredMessage[] = [];
-  await driver.tableClient.withSession(async (session) => {
-    const { resultSets } = await session.executeQuery(query, {
-      $chatId: { type: Types.INT64, value: { int64Value: chatId } },
-      $business_connection_id: { type: Types.UTF8, value: { textValue: business_connection_id } },
-    });
-    if (resultSets[0]?.rows) {
-      for (const row of resultSets[0].rows) {
-        messages.push({
-          chatId: Number(row.items![0].int64Value),
-          messageId: Number(row.items![1].int64Value),
-          business_connection_id: row.items![2].textValue!,
-          message: row.items![3].textValue!,
-          who: JSON.parse(row.items![4].textValue!),
-          timestamp: new Date(Number(row.items![5].uint64Value) / 1000),
-        });
-      }
-    }
-  });
-  return messages;
 }
 
 export async function markMessagesAsAnswered(chatId: number, business_connection_id: string, messageIds: number[]): Promise<void> {

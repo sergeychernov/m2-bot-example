@@ -3,9 +3,9 @@ import {
 	addChatMessage,
 	getLastChatMessages,
 	markMessagesAsAnswered,
-	getUnansweredMessages,
 	getMode,
-	ChatMessage
+	ChatMessage,
+	getAllUnansweredMessages
 } from './ydb';
 import {getGPTResponse, UserMessage} from "./gpt";
 import { Who } from './telegram-utils';
@@ -50,7 +50,10 @@ export async function handleBatchMessages(
 			const delay = textToReply.length * 200;
 			await imitateTypingBatch(bot, chatId, 0, delay, businessConnectionId);
 
-			const currentUnanswered = await getUnansweredMessages(chatId, businessConnectionId);
+			const allUnanswered = await getAllUnansweredMessages();
+			const currentUnanswered = allUnanswered.filter(
+			  m => m.chatId === chatId && m.business_connection_id === businessConnectionId
+			);
 			const currentIds = currentUnanswered.map((m) => m.messageId);
 			if (
 				currentIds.length > messageIds.length ||

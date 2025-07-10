@@ -22,7 +22,7 @@ async function ensureChatsTableExists(iamToken?: string): Promise<void> {
 			  .withColumn(new Column('business_connection_id', Types.UTF8))
 			  .withColumn(new Column('message', Types.UTF8))
 			  .withColumn(new Column('timestamp', Types.TIMESTAMP))
-			  .withColumn(new Column('type', Types.UTF8))
+			  .withColumn(new Column('who', Types.JSON))
 			  .withColumn(new Column('answered', Types.BOOL))
 			  .withColumn(new Column('replied_message', Types.UTF8))
 			  .withPrimaryKeys('chatId', 'messageId', 'business_connection_id')
