@@ -190,6 +190,36 @@ export async function getLastChatMessages(
   }
 }
 
+export async function getAllUnansweredMessages(): Promise<ChatMessage[]> {
+  const currentDriver = await getDriver();
+  const tableName = 'chats';
+  const query = `
+    SELECT chatId, business_connection_id, messageId, message, timestamp, type, answered, replied_message
+    FROM ${tableName}
+    WHERE answered = false
+    ORDER BY chatId, business_connection_id, timestamp ASC;
+  `;
+  const messages: ChatMessage[] = [];
+  await currentDriver.tableClient.withSession(async (session) => {
+    const { resultSets } = await session.executeQuery(query);
+    if (resultSets[0]?.rows) {
+      for (const row of resultSets[0].rows) {
+        messages.push({
+          chatId: Number(row.items![0].int64Value),
+          business_connection_id: row.items![1].textValue!,
+          messageId: Number(row.items![2].int64Value),
+          message: row.items![3].textValue!,
+          timestamp: new Date(Number(row.items![4].uint64Value) / 1000),
+          type: row.items![5].textValue! as ChatMessageType,
+          answered: row.items![6].boolValue!,
+          replied_message: row.items?.[7]?.textValue ?? ''
+        });
+      }
+    }
+  });
+  return messages;
+}
+
 export async function clearChatMessages(chatId: number): Promise<void> {
   const driver = await getDriver();
   const tableName = 'chats'; // Имя вашей таблицы
