@@ -189,20 +189,7 @@ export async function getLastChatMessages(
   }
 }
 
-// Новый тип для неотвеченных сообщений
-export interface UnansweredMessage {
-  chatId: number;
-  messageId: number;
-  business_connection_id: string;
-  message: string;
-  who: Who;
-  answered: boolean;
-  replied_message: string;
-  timestamp: Date;
-}
-
-// Получить все неотвеченные сообщения по всем чатам
-export async function getAllUnansweredMessages(): Promise<UnansweredMessage[]> {
+export async function getAllUnansweredMessages(): Promise<ChatMessage[]> {
   const currentDriver = await getDriver();
   const tableName = 'chats';
   const query = `
@@ -211,7 +198,7 @@ export async function getAllUnansweredMessages(): Promise<UnansweredMessage[]> {
     WHERE answered = false
     ORDER BY chatId, business_connection_id, timestamp ASC;
   `;
-  const messages: UnansweredMessage[] = [];
+  const messages: ChatMessage[] = [];
   await currentDriver.tableClient.withSession(async (session) => {
     const { resultSets } = await session.executeQuery(query);
     if (resultSets[0]?.rows) {
