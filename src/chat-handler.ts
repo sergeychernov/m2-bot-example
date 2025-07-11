@@ -2,7 +2,7 @@ import { Context } from 'grammy';
 import {
 	addChatMessage,
 	getLastChatMessages,
-	markMessagesAsAnswered,
+	changeAnsweredStatus,
 	getMode,
 	ChatMessage,
 	getAllUnansweredMessages
@@ -24,10 +24,14 @@ export async function chatHandler(
 	const text = message?.text || '';
 
 	if (quickMode) {
-		await addChatMessage(chatId, messageId, businessConnectionId, text, who, repliedText, true);
+		await addChatMessage(chatId, messageId, businessConnectionId, text, who, { status: true, retry: 0, lastRetryAt: new Date().toISOString() }, repliedText);
 		await handleMessagesInQuickMode(chatId, businessConnectionId);
 	} else {
-		await addChatMessage(chatId, messageId, businessConnectionId, text, who, repliedText);
+		await addChatMessage(chatId, messageId, businessConnectionId, text, who, {
+			status: false,
+			retry: 0,
+			lastRetryAt: new Date().toISOString()
+		}, repliedText,);
 	}
 }
 
@@ -63,17 +67,18 @@ export async function handleBatchMessages(
 
 			try {
 				await sendAndSaveBotReply(bot, chatId, businessConnectionId, gptResponse.text);
-				await markMessagesAsAnswered(chatId, businessConnectionId, messageIds);
+				await changeAnsweredStatus(chatId, businessConnectionId, messageIds, true);
 			} catch (e: any) {
 				if (e.description?.includes('BUSINESS_PEER_INVALID')) {
-					await markMessagesAsAnswered(chatId, businessConnectionId, messageIds);
+					await changeAnsweredStatus(chatId, businessConnectionId, messageIds, true);
 					console.warn('Ответ не доставлен из-за того, что пользователь отключил бот, BUSINESS_PEER_INVALID');
 				} else {
 					throw e;
 				}
 			}
 		} else {
-			console.error('[handleBatchMessages] Ошибка от gpt, сообщения НЕ помечаем как отвеченные:', gptResponse?.text);
+			console.error(`[handleBatchMessages] Ошибка от gpt в чате ${chatId}, сообщения НЕ помечаем как отвеченные:`, gptResponse?.text);
+			await changeAnsweredStatus(chatId, businessConnectionId, messageIds, false);
 		}
 	} catch (error) {
 		console.error('Ошибка при ответе на сообщение от клиента:', JSON.stringify(error));
@@ -133,12 +138,6 @@ async function sendAndSaveBotReply(
 		role: 'user',
 		isBot: true,
 	};
-	await addChatMessage(
-		chatId,
-		sentMessage.message_id,
-		businessConnectionId,
-		text,
-		who
-	);
+	await addChatMessage(chatId, sentMessage.message_id, businessConnectionId, text, who, { status: true, retry: 0, lastRetryAt: new Date().toISOString() });
 	return sentMessage;
 }
