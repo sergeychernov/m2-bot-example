@@ -3,14 +3,15 @@ import {Types} from 'ydb-sdk';
 import {formatProfileMarkdownV2} from "./telegram-utils";
 import {getUserDataByBusinessConnectionId, getUserDataByUserId} from './users';
 import fetch from 'node-fetch';
-import {SocksProxyAgent} from 'socks-proxy-agent';
+import { SocksProxyAgent } from 'socks-proxy-agent';
+import { fetchRetryProxy } from 'fetch-retry-proxy';
 
 // ID вашего каталога в Yandex Cloud
 const FOLDER_ID = process.env.YC_FOLDER_ID; // Оставляем, если используется для x-folder-id или если modelUri в json не полный
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const SOCKS5H = process.env.SOCKS5H || '';
 
-const agent = new SocksProxyAgent(SOCKS5H);
+const agents = SOCKS5H ? SOCKS5H.split('|').map(uri => new SocksProxyAgent(uri)) : [];
 
 // Глобальная переменная для хранения IAM токена из контекста
 // Эта переменная будет устанавливаться из index.ts
@@ -174,20 +175,19 @@ async function getGeminiResponse(
     };
 
     try {
-        const response = await fetch(url, {
+        const response = await fetchRetryProxy(url, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
             },
             body: JSON.stringify(body),
-            agent,
-        });
+        }, agents);
         console.log('getGeminiResponse.body', JSON.stringify(body));
 
         if (!response.ok) {
             const errorData = await response.json() as GeminiErrorResponse;
             const errorMessage = errorData.error?.message || response.statusText;
-            console.error('Error getting Gemini response:', JSON.stringify(errorData));
+            console.error('Error getting Gemini response 1:', JSON.stringify(errorData));
             return { text: `Ошибка Gemini: ${errorMessage}`, error: true, inputTextTokens: 0, completionTokens: 0, totalTokens: 0 };
         }
 
@@ -200,9 +200,9 @@ async function getGeminiResponse(
 
         return { text, inputTextTokens: promptTokenCount, completionTokens: candidatesTokenCount, totalTokens: totalTokenCount };
 
-    } catch (error: any) {
+    } catch (error) {
         const errorMessage = error instanceof Error ? error.message : String(error);
-        console.error('Error getting Gemini response:', JSON.stringify(error), errorMessage);
+        console.error('Error getting Gemini response 2:', JSON.stringify(error), errorMessage, (error as Error).name);
         return { text: `Ошибка Gemini: ${errorMessage}`, error: true, inputTextTokens: 0, completionTokens: 0, totalTokens: 0 };
     }
 }

@@ -286,7 +286,8 @@ export function initializeClientsCommand(bot: any) {
         await ctx.reply(message, { parse_mode: 'Markdown' });
       }
     } else {
-      await ctx.reply('Клиент не найден.');
+      console.error('Информация о клиенте не доступна:', JSON.stringify(gptResponse));
+      await ctx.reply('Информация о клиенте не доступна.');
     }
   });
 }
