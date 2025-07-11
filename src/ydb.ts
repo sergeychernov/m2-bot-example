@@ -53,6 +53,7 @@ export async function addChatMessage(
   message: string,
   who: Who,
   repliedText?: string,
+  answered?: boolean,
   iamToken?: string
 ): Promise<void> {
   const currentDriver = await getDriver(iamToken);
@@ -85,7 +86,7 @@ export async function addChatMessage(
         '$message': { type: Types.UTF8, value: { textValue: message } },
         '$timestamp': { type: Types.TIMESTAMP, value: { uint64Value: Date.now() * 1000 } },
         '$who': { type: Types.JSON, value: { textValue: JSON.stringify(who) } },
-        '$answered': { type: Types.BOOL, value: { boolValue: who.role === 'user' } },
+        '$answered': { type: Types.BOOL, value: { boolValue: answered ?? (who.role === 'user') } },
         '$replied_message': { type: Types.UTF8, value: { textValue: repliedText ?? '' } },
       });
     });
@@ -411,6 +412,7 @@ export interface Client {
   last_name?: string;
   username?: string;
   language_code?: string;
+  quickMode: boolean;
 }
 
 const clientCache = new Map<number, Client>();
@@ -427,23 +429,26 @@ export async function getClient(id: number, iamToken?: string): Promise<Client |
     return await currentDriver.tableClient.withSession(async (session) => {
       const query = `
         DECLARE $id AS Int64;
-        SELECT id, first_name, last_name, username, language_code FROM clients WHERE id = $id LIMIT 1;
+        SELECT id, first_name, last_name, username, language_code, quickMode FROM clients WHERE id = $id LIMIT 1;
       `;
       const { resultSets } = await session.executeQuery(query, {
         $id: { type: Types.INT64, value: { int64Value: id } },
       });
       if (resultSets[0]?.rows && resultSets[0].rows.length > 0) {
         const row = resultSets[0].rows[0];
-        const client: Client = {
-          id: Number(row.items![0].int64Value),
-          first_name: row.items![1].textValue ?? undefined,
-          last_name: row.items![2].textValue ?? undefined,
-          username: row.items![3].textValue ?? undefined,
-          language_code: row.items![4].textValue ?? undefined,
-        };
-        clientCache.set(id, client);
-        logger.info(`Client ${id} fetched from DB and cached.`);
-        return client;
+        if (row.items) {
+          const client: Client = {
+            id: Number(row.items[0].int64Value),
+            first_name: row.items[1].textValue ?? undefined,
+            last_name: row.items[2].textValue ?? undefined,
+            username: row.items[3].textValue ?? undefined,
+            language_code: row.items[4].textValue ?? undefined,
+            quickMode: typeof row.items[5]?.boolValue === 'boolean' ? row.items[5].boolValue : false,
+          };
+          clientCache.set(id, client);
+          logger.info(`Client ${id} fetched from DB and cached.`);
+          return client;
+        }
       }
       logger.warn(`Client with id ${id} not found in DB.`);
       return null;
@@ -470,8 +475,9 @@ export async function setClient(client: Client, iamToken?: string): Promise<void
         DECLARE $last_name AS Utf8?;
         DECLARE $username AS Utf8?;
         DECLARE $language_code AS Utf8?;
-        UPSERT INTO clients (id, first_name, last_name, username, language_code)
-        VALUES ($id, $first_name, $last_name, $username, $language_code);
+        DECLARE $quickMode AS Bool?;
+        UPSERT INTO clients (id, first_name, last_name, username, language_code, quickMode)
+        VALUES ($id, $first_name, $last_name, $username, $language_code, $quickMode);
       `;
 
       await session.executeQuery(query, {
@@ -480,6 +486,7 @@ export async function setClient(client: Client, iamToken?: string): Promise<void
         $last_name: { type: Types.optional(Types.UTF8), value: client.last_name ? { textValue: client.last_name } : { nullFlagValue: 0 } },
         $username: { type: Types.optional(Types.UTF8), value: client.username ? { textValue: client.username } : { nullFlagValue: 0 } },
         $language_code: { type: Types.optional(Types.UTF8), value: client.language_code ? { textValue: client.language_code } : { nullFlagValue: 0 } },
+        $quickMode: { type: Types.optional(Types.BOOL), value: client.quickMode ? { boolValue: client.quickMode } : { nullFlagValue: 0 } },
       });
       clientCache.set(client.id, client);
       logger.info(`Client data for ${client.id} added/updated in 'clients' table.`);

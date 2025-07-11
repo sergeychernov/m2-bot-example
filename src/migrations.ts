@@ -620,4 +620,44 @@ export const migrations: Migration[] = [
             }
         },
     },
+    {
+        version: 15,
+        name: 'AddQuickModeToClientsTable',
+        async up(driver: Driver, logger: Logger) {
+            logger.info(`Applying migration: AddQuickModeToClientsTable`);
+            try {
+                await driver.queryClient.do({
+                    fn: async (session: QuerySession) => {
+                        const addColumnQuery = `
+                            ALTER TABLE clients
+                                ADD COLUMN quickMode Bool;
+                        `;
+                        logger.info('Executing query:\n' + addColumnQuery);
+                        await session.execute({ text: addColumnQuery });
+
+                        const updateQuery = `
+                        UPDATE clients
+                        SET quickMode = false;
+                    `;
+                        logger.info('Executing query:\n' + updateQuery);
+                        await session.execute({ text: updateQuery });
+
+                        logger.info('Migration AddQuickModeToClientsTable applied successfully');
+                    }
+                });
+            } catch (error) {
+                if (error instanceof Error) {
+                    if (error.message.includes('already exists') || error.message.includes('Cannot add column to table')) {
+                        logger.warn(`Could not add column answered, it might already exist or there's another schema issue: ${error.message}`);
+                    } else {
+                        logger.error('Failed to apply migration AddQuickModeToClientsTable:', error);
+                        throw error;
+                    }
+                } else {
+                    logger.error('Failed to apply migration AddQuickModeToClientsTable with a non-Error object:', error);
+                    throw error;
+                }
+            }
+        },
+    },
 ];
