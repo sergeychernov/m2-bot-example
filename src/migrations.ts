@@ -660,4 +660,68 @@ export const migrations: Migration[] = [
             }
         },
     },
+    {
+        version: 18,
+        name: 'RecreateChatsTableWithAnsweredJson',
+        async up(driver: Driver, logger: Logger) {
+            logger.info(`Applying migration: RecreateChatsTableWithAnsweredJson`);
+
+            await driver.queryClient.do({ fn: async (session: QuerySession) => {
+                logger.info('Dropping temporary chats_new table if it exists...');
+                await session.execute({ text: 'DROP TABLE IF EXISTS chats_new;' });
+
+                logger.info('Creating temporary chats_new table with answered as JSON...');
+                await session.execute({ text: `
+                    CREATE TABLE chats_new (
+                        chatId Int64,
+                        messageId Int64,
+                        business_connection_id Utf8,
+                        message Utf8,
+                        timestamp Timestamp,
+                        who Json,
+                        answered Json,
+                        replied_message Utf8,
+                        PRIMARY KEY (chatId, messageId, business_connection_id)
+                    );
+                `});
+
+                logger.info('Copying data from chats to chats_new and converting answered to JSON...');
+                await session.execute({ text: `
+                    UPSERT INTO chats_new (chatId, messageId, business_connection_id, message, timestamp, who, answered, replied_message)
+                    SELECT
+                        chatId,
+                        messageId,
+                        business_connection_id,
+                        message,
+                        timestamp,
+                        who,
+                        CASE
+                            WHEN answered = true THEN CAST('{"status":true,"retry":1,"lastError":""}' AS Json)
+                            ELSE CAST('{"status":false,"retry":0,"lastRetryAt":"2024-07-10T19:00:00.000Z"}' AS Json)
+                        END,
+                        replied_message
+                    FROM chats;
+                `});
+
+                logger.info('Dropping old chats table...');
+                await session.execute({ text: 'DROP TABLE chats;' });
+
+                logger.info('Renaming chats_new to chats...');
+                await session.execute({ text: 'ALTER TABLE chats_new RENAME TO chats;' });
+
+                logger.info('Migration RecreateChatsTableWithAnsweredJson applied successfully');
+            }}).catch(async (error) => {
+                logger.error('Failed to apply migration RecreateChatsTableWithAnsweredJson:', JSON.stringify(error));
+                try {
+                    await driver.queryClient.do({ fn: async (session: QuerySession) => {
+                        logger.info('Attempting to clean up by dropping chats_new table...');
+                        await session.execute({ text: 'DROP TABLE IF EXISTS chats_new;' });
+                    }});
+                } catch (cleanupError) {
+                    logger.error('Failed to cleanup chats_new table after migration failure:', JSON.stringify(cleanupError));
+                }
+                throw error;
+            });
+        },
+    },
 ];
