@@ -8,7 +8,7 @@ import {
 
 } from 'ydb-sdk';
 import crypto from 'crypto';
-import { Who } from './telegram-utils';
+import { Answered, Who } from './telegram-utils';
 
 const endpoint = process.env.YDB_ENDPOINT;
 const database = process.env.YDB_DATABASE;
@@ -47,14 +47,14 @@ export async function getDriver(iamToken?: string): Promise<Driver> {
 }
 
 export async function addChatMessage(
-  chatId: number,
-  messageId: number, // Изменено с string на number
-  business_connection_id: string, // Заменено userId на business_connection_id
-  message: string,
-  who: Who,
-  repliedText?: string,
-  answered?: boolean,
-  iamToken?: string
+    chatId: number,
+    messageId: number, // Изменено с string на number
+    business_connection_id: string, // Заменено userId на business_connection_id
+    message: string,
+    who: Who,
+    answered: Answered,
+    repliedText?: string,
+    iamToken?: string
 ): Promise<void> {
   const currentDriver = await getDriver(iamToken);
   const tableName = 'chats';
@@ -67,7 +67,7 @@ export async function addChatMessage(
     DECLARE $message AS Utf8;
     DECLARE $timestamp AS Timestamp;
     DECLARE $who AS Json;
-    DECLARE $answered AS Bool;
+    DECLARE $answered AS Json;
     DECLARE $replied_message AS Utf8;
 
     UPSERT INTO ${tableName} (chatId, messageId, business_connection_id, message, timestamp, who, answered, replied_message)
@@ -86,7 +86,7 @@ export async function addChatMessage(
         '$message': { type: Types.UTF8, value: { textValue: message } },
         '$timestamp': { type: Types.TIMESTAMP, value: { uint64Value: Date.now() * 1000 } },
         '$who': { type: Types.JSON, value: { textValue: JSON.stringify(who) } },
-        '$answered': { type: Types.BOOL, value: { boolValue: answered ?? (who.role === 'user') } },
+        '$answered': { type: Types.JSON, value: { textValue: JSON.stringify(answered) } },
         '$replied_message': { type: Types.UTF8, value: { textValue: repliedText ?? '' } },
       });
     });
@@ -176,7 +176,7 @@ export async function getLastChatMessages(
             message: row.items![3].textValue!,
             timestamp: new Date(Number(row.items![4].uint64Value) / 1000),
             who: JSON.parse(row.items![5].textValue!),
-            answered: row.items![6].boolValue!,
+            answered: JSON.parse(row.items![6].textValue!),
             replied_message: row.items?.[7]?.textValue ?? ''
           });
         }
@@ -196,24 +196,42 @@ export async function getAllUnansweredMessages(): Promise<ChatMessage[]> {
   const query = `
     SELECT chatId, business_connection_id, messageId, message, timestamp, who, answered, replied_message
     FROM ${tableName}
-    WHERE answered = false
     ORDER BY chatId, business_connection_id, timestamp ASC;
   `;
   const messages: ChatMessage[] = [];
+
+  // если гпт вернет ошибку, то кидать ему запрос не чаще, чем раз в час
+  const now = Date.now();
+  const hourMs = 60 * 60 * 1000;
+
   await currentDriver.tableClient.withSession(async (session) => {
     const { resultSets } = await session.executeQuery(query);
     if (resultSets[0]?.rows) {
       for (const row of resultSets[0].rows) {
-        messages.push({
-          chatId: Number(row.items![0].int64Value),
-          business_connection_id: row.items![1].textValue!,
-          messageId: Number(row.items![2].int64Value),
-          message: row.items![3].textValue!,
-          timestamp: new Date(Number(row.items![4].uint64Value) / 1000),
-          who: JSON.parse(row.items![5].textValue!),
-          answered: row.items![6].boolValue!,
-          replied_message: row.items?.[7]?.textValue ?? ''
-        });
+        const answeredObj = JSON.parse(row.items![6].textValue!);
+        if (!answeredObj.status) {
+          if (
+            (answeredObj.retry < 2) ||
+            (
+              answeredObj.retry >= 2 &&
+              answeredObj.lastRetryAt &&
+              (now - Date.parse(answeredObj.lastRetryAt)) > hourMs
+            )
+          ) {
+            messages.push({
+              chatId: Number(row.items![0].int64Value),
+              business_connection_id: row.items![1].textValue!,
+              messageId: Number(row.items![2].int64Value),
+              message: row.items![3].textValue!,
+              timestamp: new Date(Number(row.items![4].uint64Value) / 1000),
+              who: JSON.parse(row.items![5].textValue!),
+              answered: answeredObj,
+              replied_message: row.items?.[7]?.textValue ?? ''
+            });
+          } else {
+            logger.info(`[getAllUnansweredMessages] Сообщения chatId=${row.items![0].int64Value}, messageId=${row.items![2].int64Value} нет в списке неотвеченных сообщений, т.к. в предыдущий раз LLM вернула ошибку : status=${answeredObj.status}, retry=${answeredObj.retry}, lastRetryAt=${answeredObj.lastRetryAt}`);
+          }
+        }
       }
     }
   });
@@ -256,7 +274,7 @@ export interface ChatMessage {
   message: string;
   timestamp: Date;
   who: Who;
-  answered: boolean;
+  answered: Answered;
   replied_message: string;
 }
 
@@ -659,23 +677,54 @@ export async function getQuizConfig(iamToken?: string): Promise<any | null> {
   });
 }
 
-export async function markMessagesAsAnswered(chatId: number, business_connection_id: string, messageIds: number[]): Promise<void> {
+export async function changeAnsweredStatus(
+  chatId: number,
+  business_connection_id: string,
+  messageIds: number[],
+  status: boolean = true
+): Promise<void> {
   if (messageIds.length === 0) return;
   const driver = await getDriver();
   await driver.tableClient.withSession(async (session) => {
     for (const messageId of messageIds) {
-      const query = `
-                DECLARE $chatId AS Int64;
-                DECLARE $business_connection_id AS Utf8;
-                DECLARE $messageId AS Int64;
-                UPDATE chats
-                SET answered = true
-                WHERE chatId = $chatId AND business_connection_id = $business_connection_id AND messageId = $messageId;
-            `;
-      await session.executeQuery(query, {
+      const selectQuery = `
+        SELECT answered FROM chats
+        WHERE chatId = $chatId AND business_connection_id = $business_connection_id AND messageId = $messageId;
+      `;
+      const { resultSets } = await session.executeQuery(selectQuery, {
         $chatId: { type: Types.INT64, value: { int64Value: chatId } },
         $business_connection_id: { type: Types.UTF8, value: { textValue: business_connection_id } },
         $messageId: { type: Types.INT64, value: { int64Value: messageId } },
+      });
+
+      let answeredObj = { status: false, retry: 0, lastRetryAt: new Date().toISOString() };
+
+      if (resultSets[0]?.rows?.[0]?.items?.[0]?.textValue) {
+        try {
+          answeredObj = JSON.parse(resultSets[0].rows[0].items[0].textValue);
+        } catch (e) {
+          answeredObj = { status: false, retry: 0, lastRetryAt: new Date().toISOString() };
+        }
+      }
+
+      answeredObj.status = status;
+      answeredObj.retry = (answeredObj.retry || 0) + 1;
+      answeredObj.lastRetryAt = new Date().toISOString();
+
+      const updateQuery = `
+        DECLARE $chatId AS Int64;
+        DECLARE $business_connection_id AS Utf8;
+        DECLARE $messageId AS Int64;
+        DECLARE $answered AS Json;
+        UPDATE chats
+        SET answered = $answered
+        WHERE chatId = $chatId AND business_connection_id = $business_connection_id AND messageId = $messageId;
+      `;
+      await session.executeQuery(updateQuery, {
+        $chatId: { type: Types.INT64, value: { int64Value: chatId } },
+        $business_connection_id: { type: Types.UTF8, value: { textValue: business_connection_id } },
+        $messageId: { type: Types.INT64, value: { int64Value: messageId } },
+        $answered: { type: Types.JSON, value: { textValue: JSON.stringify(answeredObj) } },
       });
     }
   });

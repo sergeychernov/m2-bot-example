@@ -144,6 +144,12 @@ export type Who = {
     isBot: boolean;
 }
 
+export type Answered = {
+    status: boolean;
+    retry: number;
+    lastRetryAt: string;
+}
+
 
 export async function isUserProfileComplete(userId: number): Promise<boolean> {
   const quizConfig = await getQuizConfig();
