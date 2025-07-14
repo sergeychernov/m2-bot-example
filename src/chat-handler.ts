@@ -21,7 +21,7 @@ export async function chatHandler(
 	const businessConnectionId = ctx.businessConnectionId || '';
 	const messageId = message?.message_id || 0;
 	const repliedText = message?.reply_to_message?.text || '';
-	const text = message?.text || '';
+	const text = message?.text || message?.sticker?.emoji || '';
 
 	if (quickMode) {
 		await addChatMessage(chatId, messageId, businessConnectionId, text, who, { status: true, retry: 0, lastRetryAt: new Date().toISOString() }, repliedText);
