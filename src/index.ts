@@ -24,6 +24,7 @@ import { Api, Bot, Context, RawApi } from 'grammy';
 import { initializeActivateCommand } from './activate-command';
 import { Message } from 'grammy/types';
 import { getUserIdByBusinessConnectionId } from './users';
+import { handleMediaMessage } from './media-handler';
 
 // Глобальная переменная для отслеживания инициализации
 let botInitialized = false;
@@ -104,6 +105,19 @@ bot.command('demo', async (ctx) => {
 
 async function chat(ctx: Context, who: Who, message: Message) {
   console.log('chat.message:', JSON.stringify(message));
+  const userId = await getUserIdByBusinessConnectionId(ctx?.businessConnectionId||'')||0;
+  const mode = await getMode(message.chat.id);
+
+  // TODO: реализовать распознавание файлов
+  if (message.photo || message.animation || message.document) {
+      try {
+          const id = mode === 'demo' ? message.chat.id : userId;
+          await handleMediaMessage(ctx, message, id);
+      } catch (e) {
+          console.error('[chat]: Ошибка при отправке уведомления о медиа:', e);
+      }
+      return;
+  }
   
   if (message.voice) {
     const { file_id, duration, mime_type, file_size } = message.voice as TelegramVoice;
