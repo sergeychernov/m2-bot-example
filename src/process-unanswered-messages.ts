@@ -1,15 +1,11 @@
 import { getAllUnansweredMessages } from './ydb';
 import { handleBatchMessages } from './chat-handler';
+import groupBy from 'lodash/groupBy';
 
 export async function processAllUnansweredChats() {
   const allUnanswered = await getAllUnansweredMessages();
 
-  const grouped: Record<string, typeof allUnanswered> = {};
-  for (const msg of allUnanswered) {
-    const key = `${msg.chatId}:${msg.business_connection_id}`;
-    if (!grouped[key]) grouped[key] = [];
-    grouped[key].push(msg);
-  }
+  const grouped = groupBy(allUnanswered, msg => `${msg.chatId}:${msg.business_connection_id}`);
 
   for (const key in grouped) {
     const [chatId, business_connection_id] = key.split(':');
