@@ -8,7 +8,7 @@ export async function handleMediaMessage (ctx: Context, message: Message, userId
         ? `https://t.me/${clientUsername}`
         : `tg://user?id=${clientId}`;
 
-    const notifyText = `Клиент прислал файл, который бот пока не умеет их обрабатывать, поэтому нужно ответить вручную. [Открыть чат с клиентом](${clientLink})`;
+    const notifyText = `Клиент прислал файл, который бот пока не умеет обрабатывать, поэтому нужно ответить вручную. [Открыть чат с клиентом](${clientLink})`;
 
     await ctx.api.sendMessage(userId, notifyText, { parse_mode: 'Markdown' });
 }

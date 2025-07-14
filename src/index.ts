@@ -108,12 +108,13 @@ async function chat(ctx: Context, who: Who, message: Message) {
   const userId = await getUserIdByBusinessConnectionId(ctx?.businessConnectionId||'')||0;
   const mode = await getMode(message.chat.id);
 
+  // TODO: реализовать распознавание файлов
   if (message.photo || message.animation || message.document) {
       try {
           const id = mode === 'demo' ? message.chat.id : userId;
           await handleMediaMessage(ctx, message, id);
       } catch (e) {
-          console.error('Ошибка при отправке уведомления о медиа:', e);
+          console.error('[chat]: Ошибка при отправке уведомления о медиа:', e);
       }
       return;
   }
