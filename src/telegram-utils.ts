@@ -150,6 +150,11 @@ export type Answered = {
     lastRetryAt: string;
 }
 
+export type Mute = {
+    status: boolean;
+    muteUntil: string;
+}
+
 
 export async function isUserProfileComplete(userId: number): Promise<boolean> {
   const quizConfig = await getQuizConfig();

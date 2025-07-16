@@ -1,6 +1,7 @@
 import { initializeClientsCommand } from './clients-command';
 import { setIamToken } from './gpt';
 import {
+    addChatMessage,
     Client, getClient,
     getDriver,
     getMode,
@@ -136,6 +137,28 @@ async function chat(ctx: Context, who: Who, message: Message) {
 
       const client = await getClient(chatId);
       const quickMode = client?.quickMode;
+
+      if (client?.mute?.status) {
+          const now = new Date();
+          const muteUntil = client.mute.muteUntil ? new Date(client.mute.muteUntil) : '';
+
+          if (muteUntil && muteUntil > now) {
+              await addChatMessage(
+                  chatId,
+                  message.message_id,
+                  ctx.businessConnectionId || '',
+                  message.text || '',
+                  who,
+                  { status: true, retry: 0, lastRetryAt: new Date().toISOString() },
+                  message.reply_to_message?.text || ''
+              );
+              return;
+          } else {
+              const newClient = { ...client, mute: { status: false, muteUntil: '' } };
+              await setClient(newClient);
+          }
+      }
+
       await Promise.all([setClient({...ctx.from, quickMode} as Client), chatHandler(ctx, who, message, quickMode)]);
   } catch (error) {
       console.error('Error in chat:', JSON.stringify(error));
@@ -184,7 +207,22 @@ bot.on('business_message', async (ctx, next) => {
           // Отправляем сообщение напрямую пользователю через обычного бота
           await Promise.all([bot.api.sendMessage(fromId, responseText), setMode(fromId, 'idle')]);
           } else {
-            console.warn('TODO: отвечает пользователь, надо добавить в диалог и приостановить работу бота.')
+            // если пользователь сам отвечает клиенту
+            await addChatMessage(
+                businessMessage.chat.id,
+                businessMessage.message_id,
+                businessConnectionId,
+                businessMessage.text || '',
+                who,
+                { status: true, retry: 0, lastRetryAt: new Date().toISOString() },
+                businessMessage.reply_to_message?.text || '',
+            );
+            const client = await getClient(businessMessage.chat.id);
+            if (client) {
+                const muteUntil = new Date(Date.now() + 1 * 60 * 1000).toISOString();
+                const newClient = { ...client, mute: { status: true, muteUntil } };
+                await setClient(newClient);
+            }
         }
       }
       break;
