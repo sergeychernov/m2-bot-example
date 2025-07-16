@@ -116,6 +116,7 @@ async function ensureClientsTableExists(iamToken?: string): Promise<void> {
 						.withColumn(new Column('username', Types.optional(Types.UTF8)))
 						.withColumn(new Column('language_code', Types.optional(Types.UTF8)))
 						.withColumn(new Column('quickMode', Types.BOOL))
+						.withColumn(new Column('mode', Types.JSON))
 						.withPrimaryKeys('id')
 				);
 				logger.info("Table 'clients' created successfully.");

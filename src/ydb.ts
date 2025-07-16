@@ -8,7 +8,7 @@ import {
 
 } from 'ydb-sdk';
 import crypto from 'crypto';
-import { Answered, Who } from './telegram-utils';
+import { Answered, Mute, Who } from './telegram-utils';
 
 const endpoint = process.env.YDB_ENDPOINT;
 const database = process.env.YDB_DATABASE;
@@ -431,6 +431,7 @@ export interface Client {
   username?: string;
   language_code?: string;
   quickMode: boolean;
+  mute: Mute;
 }
 
 const clientCache = new Map<number, Client>();
@@ -447,7 +448,7 @@ export async function getClient(id: number, iamToken?: string): Promise<Client |
     return await currentDriver.tableClient.withSession(async (session) => {
       const query = `
         DECLARE $id AS Int64;
-        SELECT id, first_name, last_name, username, language_code, quickMode FROM clients WHERE id = $id LIMIT 1;
+        SELECT id, first_name, last_name, username, language_code, quickMode, mute FROM clients WHERE id = $id LIMIT 1;
       `;
       const { resultSets } = await session.executeQuery(query, {
         $id: { type: Types.INT64, value: { int64Value: id } },
@@ -462,6 +463,7 @@ export async function getClient(id: number, iamToken?: string): Promise<Client |
             username: row.items[3].textValue ?? undefined,
             language_code: row.items[4].textValue ?? undefined,
             quickMode: typeof row.items[5]?.boolValue === 'boolean' ? row.items[5].boolValue : false,
+            mute: row.items[6]?.textValue ? JSON.parse(row.items[6].textValue) : undefined,
           };
           clientCache.set(id, client);
           logger.info(`Client ${id} fetched from DB and cached.`);
@@ -494,8 +496,8 @@ export async function setClient(client: Client, iamToken?: string): Promise<void
         DECLARE $username AS Utf8?;
         DECLARE $language_code AS Utf8?;
         DECLARE $quickMode AS Bool?;
-        UPSERT INTO clients (id, first_name, last_name, username, language_code, quickMode)
-        VALUES ($id, $first_name, $last_name, $username, $language_code, $quickMode);
+        UPSERT INTO clients (id, first_name, last_name, username, language_code, quickMode, mute)
+        VALUES ($id, $first_name, $last_name, $username, $language_code, $quickMode, $mute);
       `;
 
       await session.executeQuery(query, {
@@ -505,6 +507,10 @@ export async function setClient(client: Client, iamToken?: string): Promise<void
         $username: { type: Types.optional(Types.UTF8), value: client.username ? { textValue: client.username } : { nullFlagValue: 0 } },
         $language_code: { type: Types.optional(Types.UTF8), value: client.language_code ? { textValue: client.language_code } : { nullFlagValue: 0 } },
         $quickMode: { type: Types.optional(Types.BOOL), value: client.quickMode ? { boolValue: client.quickMode } : { nullFlagValue: 0 } },
+        $mute: {
+          type: Types.optional(Types.JSON),
+          value: { textValue: JSON.stringify(client.mute ?? { status: false, muteUntil: '' }) }
+        },
       });
       clientCache.set(client.id, client);
       logger.info(`Client data for ${client.id} added/updated in 'clients' table.`);
