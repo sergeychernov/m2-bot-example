@@ -763,7 +763,7 @@ export async function isUserOnline(
     messages: ChatMessage[]
 ): Promise<boolean> {
   const onlineTimeoutMs = timeoutMinutes * 60 * 1000;
-  const userMessages = messages.find(
+  const userMessages = messages.filter(
       m => m.who.role === 'user' && !m.who.isBot
   );
 
@@ -771,6 +771,9 @@ export async function isUserOnline(
     return false;
   }
 
-  const lastTimestamp = userMessages.timestamp.getTime();
-  return Date.now() - lastTimestamp < onlineTimeoutMs;
+  const lastUserMessage = userMessages.sort(
+      (a, b) => b.timestamp.getTime() - a.timestamp.getTime()
+  )[0];
+
+  return Date.now() - lastUserMessage.timestamp.getTime() < onlineTimeoutMs;
 }
