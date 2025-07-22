@@ -289,6 +289,7 @@ export interface Prompt {
   stream: boolean; // Новое поле
   temperature: number; // Новое поле
   maxTokens: number; // Новое поле
+  pauseBotTime: number;
 }
 
 export async function addPrompt(
@@ -298,6 +299,7 @@ export async function addPrompt(
   stream: boolean, // Новый параметр
   temperature: number, // Новый параметр
   maxTokens: number, // Новый параметр
+  pauseBotTime: number,
   iamToken?: string
 ): Promise<string> {
   const currentDriver = await getDriver(iamToken);
@@ -321,9 +323,10 @@ export async function addPrompt(
         DECLARE $maxTokens AS Int64;
         DECLARE $greetingPrompt AS Utf8;
         DECLARE $dialogPrompt AS Utf8;
+        DECLARE $pauseBotTime AS Int64;
 
-        UPSERT INTO prompts (promptId, promptText, promptType, createdAt, model, stream, temperature, maxTokens, greetingPrompt, dialogPrompt)
-        VALUES ($promptId, $promptText, $promptType, $createdAt, $model, $stream, $temperature, $maxTokens, $greetingPrompt, $dialogPrompt);
+        UPSERT INTO prompts (promptId, promptText, promptType, createdAt, model, stream, temperature, maxTokens, greetingPrompt, dialogPrompt, pauseBotTime)
+        VALUES ($promptId, $promptText, $promptType, $createdAt, $model, $stream, $temperature, $maxTokens, $greetingPrompt, $dialogPrompt, $pauseBotTime);
       `;
 
       const timestampMicroseconds = createdAt.getTime() * 1000;
@@ -339,6 +342,7 @@ export async function addPrompt(
         $maxTokens: { type: Types.INT64, value: { int64Value: maxTokens } },
         $greetingPrompt: { type: Types.UTF8, value: { textValue: greetingPrompt ?? '' } },
         $dialogPrompt: { type: Types.UTF8, value: { textValue: dialogPrompt ?? '' } },
+        $pauseBotTime: { type: Types.INT64, value: { int64Value: pauseBotTime } },
       });
       logger.info(`Prompt ${promptId} of type ${promptType} added to 'prompts' table.`);
     });
@@ -356,7 +360,7 @@ export async function getLatestPromptByType(promptType: string, iamToken?: strin
       const query = `
         DECLARE $promptType AS Utf8;
 
-        SELECT promptId, promptText, greetingPrompt, dialogPrompt, promptType, createdAt, model, \`stream\`, temperature, maxTokens
+        SELECT promptId, promptText, greetingPrompt, dialogPrompt, promptType, createdAt, model, \`stream\`, temperature, maxTokens, pauseBotTime
         FROM prompts
         WHERE promptType = $promptType
         ORDER BY createdAt DESC
@@ -381,6 +385,7 @@ export async function getLatestPromptByType(promptType: string, iamToken?: strin
             stream: row.items[7].boolValue || false,
             temperature: row.items[8].doubleValue || 0.6,
             maxTokens: Number(row.items[9].int64Value) || 20000,
+            pauseBotTime: Number(row.items[10]?.int64Value) || 10,
           };
         }
       }
@@ -504,7 +509,7 @@ export async function setClient(client: Client, iamToken?: string): Promise<void
         $last_name: { type: Types.optional(Types.UTF8), value: client.last_name ? { textValue: client.last_name } : { nullFlagValue: 0 } },
         $username: { type: Types.optional(Types.UTF8), value: client.username ? { textValue: client.username } : { nullFlagValue: 0 } },
         $language_code: { type: Types.optional(Types.UTF8), value: client.language_code ? { textValue: client.language_code } : { nullFlagValue: 0 } },
-        $quickMode: { type: Types.optional(Types.BOOL), value: client.quickMode ? { boolValue: client.quickMode } : { nullFlagValue: 0 } },
+        $quickMode: { type: Types.optional(Types.BOOL), value: { boolValue: client.quickMode } },
       });
       clientCache.set(client.id, client);
       logger.info(`Client data for ${client.id} added/updated in 'clients' table.`);
@@ -751,4 +756,21 @@ export async function updateUserBusinessConnection(userId: number, businessConne
     logger.error('Failed to update user business connection:', error);
     throw error;
   }
+}
+
+export async function isUserOnline(
+    timeoutMinutes: number = 10,
+    messages: ChatMessage[]
+): Promise<boolean> {
+  const onlineTimeoutMs = timeoutMinutes * 60 * 1000;
+  const userMessages = messages.find(
+      m => m.who.role === 'user' && !m.who.isBot
+  );
+
+  if (!userMessages) {
+    return false;
+  }
+
+  const lastTimestamp = userMessages.timestamp.getTime();
+  return Date.now() - lastTimestamp < onlineTimeoutMs;
 }

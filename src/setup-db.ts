@@ -65,6 +65,7 @@ async function ensurePromptsTableExists(iamToken?: string): Promise<void> {
 			  .withColumn(new Column('stream', Types.BOOL)) // Новое поле
 			  .withColumn(new Column('temperature', Types.DOUBLE)) // Новое поле
 			  .withColumn(new Column('maxTokens', Types.INT64)) // Новое поле
+			  .withColumn(new Column('pauseBotTime', Types.INT64))
 			  .withPrimaryKeys('promptId')
 		  );
 		  logger.info("Table 'prompts' created successfully.");
@@ -83,8 +84,9 @@ async function ensurePromptsTableExists(iamToken?: string): Promise<void> {
 			  gptConfig.model, 
 			  gptConfig.completionOptions.stream, 
 			  gptConfig.completionOptions.temperature, 
-			  gptConfig.completionOptions.maxTokens, 
-			  iamToken
+			  gptConfig.completionOptions.maxTokens,
+			  10,
+			  iamToken,
 			); 
 			logger.info('Initial base prompt added to DB from system_prompt.md and gpt.json after table creation.');
 		  } catch (fileError) {

@@ -1,11 +1,15 @@
 import { initializeClientsCommand } from './clients-command';
 import { setIamToken } from './gpt';
 import {
-    Client, getClient,
+    addChatMessage,
+    changeAnsweredStatus,
+    Client,
+    getClient,
     getDriver,
     getMode,
     setClient,
-    setMode, updateChatMessage,
+    setMode,
+    updateChatMessage,
     updateUserBusinessConnection,
     UserMode,
 } from './ydb';
@@ -24,6 +28,7 @@ import { Api, Bot, Context, RawApi } from 'grammy';
 import { initializeActivateCommand } from './activate-command';
 import { Message } from 'grammy/types';
 import { getUserIdByBusinessConnectionId } from './users';
+import { getUnansweredMessageIds } from './process-unanswered-messages';
 
 // Глобальная переменная для отслеживания инициализации
 let botInitialized = false;
@@ -184,7 +189,20 @@ bot.on('business_message', async (ctx, next) => {
           // Отправляем сообщение напрямую пользователю через обычного бота
           await Promise.all([bot.api.sendMessage(fromId, responseText), setMode(fromId, 'idle')]);
           } else {
-            console.warn('TODO: отвечает пользователь, надо добавить в диалог и приостановить работу бота.')
+            // если пользователь сам отвечает клиенту
+            await addChatMessage(
+                businessMessage.chat.id,
+                businessMessage.message_id,
+                businessConnectionId,
+                businessMessage.text || '',
+                who,
+                { status: true, retry: 0, lastRetryAt: new Date().toISOString() },
+                businessMessage.reply_to_message?.text || '',
+            );
+            const messageIds = await getUnansweredMessageIds(businessMessage.chat.id, businessConnectionId);
+            if (messageIds.length > 0) {
+                await changeAnsweredStatus(businessMessage.chat.id, businessConnectionId, messageIds, true);
+            }
         }
       }
       break;

@@ -27,7 +27,7 @@ export interface UserDataItem {
 }
 
 // Переименовываем и изменяем функцию для загрузки всех настроек из БД
-async function loadGptSettingsFromDb(promptType: string, iamToken?: string): Promise<Prompt | null> {
+export async function loadGptSettingsFromDb(promptType: string, iamToken?: string): Promise<Prompt | null> {
     try {
         const latestPromptSettings = await getLatestPromptByType(promptType, iamToken);
         if (latestPromptSettings) {

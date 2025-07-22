@@ -49,9 +49,9 @@ export async function debugClientCommands(bot: Bot) {
                 }
                 const client = await getClient(chatId);
                 if (client) {
-                  client.quickMode = !client.quickMode;
-                  await setClient(client);
-                  await ctx.reply(client.quickMode
+                  const newClient = { ...client, quickMode: !client.quickMode };
+                  await setClient(newClient);
+                  await ctx.reply(newClient.quickMode
                     ? '⚡ Быстрый режим ВКЛЮЧЁН для этого чата.'
                     : '⏳ Быстрый режим ВЫКЛЮЧЕН для этого чата.');
                 } else {

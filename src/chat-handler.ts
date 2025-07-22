@@ -5,9 +5,10 @@ import {
 	changeAnsweredStatus,
 	getMode,
 	ChatMessage,
-	getAllUnansweredMessages
+	getAllUnansweredMessages,
+	isUserOnline
 } from './ydb';
-import {getGPTResponse, UserMessage} from "./gpt";
+import {getGPTResponse, loadGptSettingsFromDb, UserMessage} from "./gpt";
 import { Who } from './telegram-utils';
 import { Message } from 'grammy/types';
 
@@ -41,10 +42,20 @@ export async function handleBatchMessages(
 	messageIds: number[]
 ) {
 	try {
-		const mode = await getMode(chatId);
 		const historyMessages = await getLastChatMessages(chatId, businessConnectionId, 30);
+		const gptSettings = await loadGptSettingsFromDb('base');
+
+		// если риелтор сам отвечает клиенту
+		const isOnlineUser = await isUserOnline(gptSettings?.pauseBotTime, historyMessages);
+		if (isOnlineUser) {
+			console.log(`[handleBatchMessages] Пользователь онлайн, бот не отвечает (chatId=${chatId})`);
+			return;
+		}
+
 		const gptMessages = buildGptMessages(historyMessages);
+		const mode = await getMode(chatId);
 		const gptResponse = await getGPTResponse(gptMessages, 'base', businessConnectionId, chatId, mode);
+
 		if (gptResponse?.text && !gptResponse.error) {
 			const { bot } = await import('./bot-instance');
 			const { imitateTypingBatch } = await import('./telegram-utils');
