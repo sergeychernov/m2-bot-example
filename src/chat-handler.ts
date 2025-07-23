@@ -56,7 +56,7 @@ export async function handleBatchMessages(
 		const mode = await getMode(chatId);
 		const gptResponse = await getGPTResponse(gptMessages, 'base', businessConnectionId, chatId, mode);
 
-		if (gptResponse?.text && !gptResponse.error) {
+		if (!isOnlineUser && gptResponse?.text && !gptResponse.error) {
 			const { bot } = await import('./bot-instance');
 			const { imitateTypingBatch } = await import('./telegram-utils');
 			const textToReply = gptResponse.text;
