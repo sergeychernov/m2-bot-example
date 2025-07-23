@@ -113,14 +113,14 @@ export async function debugClientCommands(bot: Bot) {
 	  // В вашем текущем getLastTenChatMessages iamToken опционален, 
 	  // но если бы он был обязателен, его нужно было бы получить здесь, 
 	  // например, из context в serverless-функции или другим способом.
-	  const messages = await getLastChatMessages(chatId, business_connection_id, n);
+	  const messages = await getLastChatMessages(chatId, business_connection_id);
   
 	  if (messages.length === 0) {
 		await ctx.reply('Сообщений в этом чате пока нет.');
 		return;
 	  }
   
-	  let replyText = `Последние ${n} сообщений:\n`;
+	  let replyText = `Последние сообщения:\n`;
 	  messages.forEach(msg => {
 		const date = new Date(msg.timestamp); // YDB timestamp is in microseconds
 		replyText += `\n[${date.toLocaleString()}] ${msg.who.role}: ${msg.message}`;
@@ -129,7 +129,7 @@ export async function debugClientCommands(bot: Bot) {
 	  await ctx.reply(replyText);
   
 	} catch (error) {
-	  console.error(`Error fetching last ${n} chat messages:`, JSON.stringify(error));
-	  await ctx.reply('Произошла ошибка при получении последних сообщений.');
+	  console.error(`Error fetching chat messages:`, JSON.stringify(error));
+	  await ctx.reply('Произошла ошибка при получении сообщений.');
 	}
   }

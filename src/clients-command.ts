@@ -245,7 +245,7 @@ export function initializeClientsCommand(bot: any) {
 		return;
     }
     
-    const historyMessages = await getLastChatMessages(clientId, businessConnectionId || '', 50);
+    const historyMessages = await getLastChatMessages(clientId, businessConnectionId || '');
     console.log('client_', clientId, userId, businessConnectionId, historyMessages.length);
             // Формируем только сообщения пользователя и ассистента для передачи в getGPTResponse
     const gptMessages: UserMessage[] = historyMessages.map((v: ChatMessage) => {
