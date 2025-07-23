@@ -48,7 +48,7 @@ export function createQuiz(quizConfig: QuizConfig) {
       }
       try {
         const mode = await getMode(userId) || 'none';
-        await addUserData(userId, newData, mode);
+        await addUserData(ctx.from, newData, mode);
       } catch (e) {
         console.log('Данные не удалось сохранить', e);
       }
