@@ -433,6 +433,14 @@ export interface Client {
   quickMode: boolean;
 }
 
+export interface User {
+  id: number;
+  first_name?: string;
+  last_name?: string;
+  username?: string;
+  language_code?: string;
+}
+
 const clientCache = new Map<number, Client>();
 
 export async function getClient(id: number, iamToken?: string): Promise<Client | null> {
