@@ -767,7 +767,7 @@ export async function isUserOnline(
       m => m.who.role === 'user' && !m.who.isBot
   );
 
-  if (!userMessages) {
+  if (userMessages.length === 0) {
     return false;
   }
 
