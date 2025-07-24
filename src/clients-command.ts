@@ -101,11 +101,12 @@ export async function getClientsData(chatIds: number[]): Promise<Client[]> {
           const items = row.items ?? [];
           const client: Client = {
             id: Number(items[0]?.int64Value || 0),
-            first_name: items[1]?.textValue || undefined,
+            first_name: items[1]?.textValue || '',
             last_name: items[2]?.textValue || undefined,
             username: items[3]?.textValue || undefined,
             language_code: items[4]?.textValue || undefined,
             quickMode: items[5]?.boolValue || false,
+            is_bot: false
           };
           clients.push(client);
         }
