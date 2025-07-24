@@ -65,7 +65,6 @@ export function formatMarkdownV2Text(text: string, formatting?: {
     spoiler?: boolean;
     code?: boolean;
 }): string {
-    // Сначала экранируем текст, сохраняя символы форматирования
     let escapedText = escapeMarkdownV2(text, true);
     
     if (formatting) {
@@ -124,7 +123,7 @@ export type Who = {
 }
     |{
     room: 'bot';
-    role: 'client';//Для демо режима
+    role: 'client';
     isBot: false; 
 }
     |

@@ -180,20 +180,6 @@ export async function getUserClientsWithData(userId: number): Promise<Client[]> 
 }
 
 /**
- * Форматирует список chatId для отображения пользователю
- * @param chatIds - Массив chatId
- * @returns Отформатированная строка
- */
-export function formatClientChatIds(chatIds: number[]): string {
-  if (chatIds.length === 0) {
-    return 'У вас пока нет клиентов.';
-  }
-  
-  const chatList = chatIds.map((chatId, index) => `${index + 1}. Chat ID: ${chatId}`).join('\n');
-  return `Ваши клиенты (${chatIds.length}):\n\n${chatList}`;
-}
-
-/**
  * Инициализирует команду /clients для бота
  * @param bot - Экземпляр бота
  */

@@ -4,7 +4,6 @@ import {
   Types,
   TokenAuthService,
   MetadataAuthService,
-  // Ydb, // Может понадобиться для доступа к Ydb.IValue, если не экспортируется иначе
 
 } from 'ydb-sdk';
 import crypto from 'crypto';
@@ -48,8 +47,8 @@ export async function getDriver(iamToken?: string): Promise<Driver> {
 
 export async function addChatMessage(
     chatId: number,
-    messageId: number, // Изменено с string на number
-    business_connection_id: string, // Заменено userId на business_connection_id
+    messageId: number,
+    business_connection_id: string,
     message: string,
     who: Who,
     answered: Answered,
@@ -135,7 +134,7 @@ export async function updateChatMessage(
 
 export async function getLastChatMessages(
   chatId: number,
-  business_connection_id: string, // Заменено userId на business_connection_id
+  business_connection_id: string,
   limit: number = 10,
   iamToken?: string
 ): Promise<ChatMessage[]> {
@@ -200,7 +199,6 @@ export async function getAllUnansweredMessages(): Promise<ChatMessage[]> {
   `;
   const messages: ChatMessage[] = [];
 
-  // если гпт вернет ошибку, то кидать ему запрос не чаще, чем раз в час
   const now = Date.now();
   const hourMs = 60 * 60 * 1000;
 
@@ -240,7 +238,7 @@ export async function getAllUnansweredMessages(): Promise<ChatMessage[]> {
 
 export async function clearChatMessages(chatId: number): Promise<void> {
   const driver = await getDriver();
-  const tableName = 'chats'; // Имя вашей таблицы
+  const tableName = 'chats';
 
   const query = `
         PRAGMA TablePathPrefix("${process.env.YDB_DATABASE}");
@@ -269,8 +267,8 @@ export async function clearChatMessages(chatId: number): Promise<void> {
 
 export interface ChatMessage {
   chatId: number;
-  messageId: number; // Изменено с string на number (INT64)
-  business_connection_id: string; // Заменено userId на business_connection_id (UTF8)
+  messageId: number;
+  business_connection_id: string;
   message: string;
   timestamp: Date;
   who: Who;
@@ -285,25 +283,25 @@ export interface Prompt {
   dialogPrompt?: string;
   promptType: string;
   createdAt: Date;
-  model: string; // Новое поле
-  stream: boolean; // Новое поле
-  temperature: number; // Новое поле
-  maxTokens: number; // Новое поле
+  model: string;
+  stream: boolean;
+  temperature: number;
+  maxTokens: number;
   pauseBotTime: number;
 }
 
 export async function addPrompt(
   promptText: string,
   promptType: string,
-  model: string, // Новый параметр
-  stream: boolean, // Новый параметр
-  temperature: number, // Новый параметр
-  maxTokens: number, // Новый параметр
+  model: string,
+  stream: boolean,
+  temperature: number,
+  maxTokens: number,
   pauseBotTime: number,
   iamToken?: string
 ): Promise<string> {
   const currentDriver = await getDriver(iamToken);
-  const promptId = crypto.randomUUID(); // Генерируем UUID для promptId
+  const promptId = crypto.randomUUID();
   const createdAt = new Date();
 
   const lastPrompt = await getLatestPromptByType(promptType, iamToken);

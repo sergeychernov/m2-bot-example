@@ -109,10 +109,6 @@ export async function debugClientCommands(bot: Bot) {
 	}
   
 	try {
-	  // Получаем iamToken, если он нужен для getLastTenChatMessages
-	  // В вашем текущем getLastTenChatMessages iamToken опционален, 
-	  // но если бы он был обязателен, его нужно было бы получить здесь, 
-	  // например, из context в serverless-функции или другим способом.
 	  const messages = await getLastChatMessages(chatId, business_connection_id, n);
   
 	  if (messages.length === 0) {

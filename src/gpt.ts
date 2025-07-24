@@ -6,7 +6,6 @@ import fetch from 'node-fetch';
 import { SocksProxyAgent } from 'socks-proxy-agent';
 import { fetchRetryProxy } from 'fetch-retry-proxy';
 
-// ID вашего каталога в Yandex Cloud
 const FOLDER_ID = process.env.YC_FOLDER_ID; // Оставляем, если используется для x-folder-id или если modelUri в json не полный
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const SOCKS5H = process.env.SOCKS5H || '';
@@ -21,12 +20,6 @@ export function setIamToken(token: string | null) {
     currentIamToken = token;
 }
 
-// Расширяемый словарь для хранения любых пользовательских данных
-export interface UserDataItem {
-    [key: string]: any;
-}
-
-// Переименовываем и изменяем функцию для загрузки всех настроек из БД
 export async function loadGptSettingsFromDb(promptType: string, iamToken?: string): Promise<Prompt | null> {
     try {
         const latestPromptSettings = await getLatestPromptByType(promptType, iamToken);
@@ -34,7 +27,6 @@ export async function loadGptSettingsFromDb(promptType: string, iamToken?: strin
             return latestPromptSettings;
         }
         console.warn(`No ${promptType} prompt settings found in DB, using fallback or defaults.`);
-        // Можно вернуть объект с настройками по умолчанию, если это необходимо
         return null;
     } catch (error) {
         console.error('Failed to load GPT settings from DB:', JSON.stringify(error));
@@ -52,8 +44,6 @@ export function formatSystemPrompt(promptTemplate: string, userData: Record<stri
     return prompt;
 }
 
-// Обновленная функция getYandexGPTResponse
-// Функция для логирования бюджета
 async function logBudget(
     chatId: number,
     businessConnectionId: string,
@@ -355,7 +345,7 @@ export async function getGPTResponse(
             
             return response;
         } else {
-            return response; // Return response with error
+            return response;
         }
 
     } catch (error: any) {

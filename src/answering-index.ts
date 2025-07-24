@@ -33,7 +33,7 @@ export async function handler(event: any, context?: any) {
     try {
     
       if (payload.replies_scheduler && iamToken) {
-        await getDriver(iamToken); // Убедимся что драйвер создан
+        await getDriver(iamToken);
         await processAllUnansweredChats();
         return { statusCode: 200, body: 'Unanswered chats processed (from cron)' };
       }

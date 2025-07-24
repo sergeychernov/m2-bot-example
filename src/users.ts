@@ -77,7 +77,6 @@ export async function getUserDataByBusinessConnectionId(businessConnectionId: st
   }
 }
 
-// Новая функция: получить userId по business_connection_id
 export async function getUserIdByBusinessConnectionId(businessConnectionId: string, iamToken?: string): Promise<number | null> {
   const currentDriver = await getDriver(iamToken);
   try {
@@ -101,7 +100,6 @@ export async function getUserIdByBusinessConnectionId(businessConnectionId: stri
   }
 }
 
-// Новая функция: получить business_connection_id по userId
 export async function getBusinessConnectionIdByUserId(userId: number, iamToken?: string): Promise<string | null> {
   const currentDriver = await getDriver(iamToken);
   try {

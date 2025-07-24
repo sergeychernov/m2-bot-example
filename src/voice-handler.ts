@@ -1,9 +1,7 @@
 import { Context } from 'grammy';
 import { bot } from './bot-instance';
 import { iam } from './iam';
-import { getUserIdByBusinessConnectionId } from './users';
 
-// Интерфейс для ответа SpeechKit
 interface SpeechKitResponse {
     result?: {
         alternatives?: Array<{
@@ -23,8 +21,6 @@ interface SpeechKitResponse {
     };
 }
 
-// Функция для отправки аудио в SpeechKit
-// Функция для определения формата по MIME-типу
 function getFormatFromMimeType(mimeType: string): { format: string; sampleRate?: string } {
     switch (mimeType) {
         case 'audio/ogg':
@@ -54,33 +50,29 @@ export async function recognizeSpeech(audioBuffer: ArrayBuffer, mime_type: strin
         console.log('IAM token length:', iamToken ? iamToken.length : 'null');
         console.log('Audio buffer size:', audioBuffer.byteLength);
         console.log('MIME type:', mime_type);
-        
-        // Определяем формат согласно документации
+
         const { format, sampleRate } = getFormatFromMimeType(mime_type);
         console.log(`Using format: ${format}${sampleRate ? `, sample rate: ${sampleRate}` : ' (default sample rate)'}`);
-        
-        // Формируем URL с параметрами согласно документации
+
         const url = new URL('https://stt.api.cloud.yandex.net/speech/v1/stt:recognize');
         url.searchParams.set('topic', 'general');
         url.searchParams.set('lang', 'ru-RU');
         url.searchParams.set('format', format);
-        
-        // sampleRateHertz указываем только для lpcm формата
+
         if (format === 'lpcm' && sampleRate) {
             url.searchParams.set('sampleRateHertz', sampleRate);
         }
         
         console.log('Sending request to SpeechKit...');
         console.log('URL:', url.toString());
-        
-        // Отправляем двоичное содержимое аудиофайла в теле запроса
+
         const response = await fetch(url.toString(), {
             method: 'POST',
             headers: {
                 'Authorization': `Bearer ${iamToken}`,
                 'Content-Type': 'application/octet-stream'
             },
-            body: audioBuffer // Отправляем напрямую ArrayBuffer, а не FormData
+            body: audioBuffer
         });
         
         console.log('Response status:', response.status);
@@ -92,8 +84,7 @@ export async function recognizeSpeech(audioBuffer: ArrayBuffer, mime_type: strin
             console.error('Status:', response.status);
             console.error('Status text:', response.statusText);
             console.error('Error body:', errorText);
-            
-            // Специальная обработка ошибки авторизации
+
             if (response.status === 401) {
                 console.error('Authorization failed. Check:');
                 console.error('1. IAM token validity');
@@ -127,16 +118,13 @@ export async function recognizeSpeech(audioBuffer: ArrayBuffer, mime_type: strin
 
 export async function handleVoiceMessage(fileId: string, chatId: number, mime_type:string, userId: number, context?: Context) {
     try {
-        // Получаем IAM токен
         const iamToken = iam(context);
         if (!iamToken) {
             throw new Error('IAM token not available');
         }
-        
-        // Получаем информацию о файле
+
         const file = await bot.api.getFile(fileId);
-        
-        // Формируем URL для скачивания
+
         const fileUrl = `https://api.telegram.org/file/bot${process.env.BOT_TOKEN}/${file.file_path}`;
         
         console.log('Voice file URL:', fileUrl);
@@ -144,16 +132,14 @@ export async function handleVoiceMessage(fileId: string, chatId: number, mime_ty
 		console.log('File path:', file.file_path);
 		
 		console.log('File:', JSON.stringify(file));
-        
-        // Скачиваем файл
+
         const response = await fetch(fileUrl);
         if (!response.ok) {
             throw new Error(`Failed to download file: ${response.statusText}`);
         }
         
         const audioBuffer = await response.arrayBuffer();
-        
-        // Отправляем на обработку в SpeechKit
+
         const recognizedText = await recognizeSpeech(audioBuffer, mime_type, iamToken);
         
         if (recognizedText) {
@@ -165,11 +151,9 @@ export async function handleVoiceMessage(fileId: string, chatId: number, mime_ty
                 recognizedText
             };
         } else {
-            // Если текст не распознан
             const errorText = '❌ Не удалось распознать речь в голосовом сообщении';
             
             if (userId) {
-                // Отправляем ошибку в личный чат владельца бота
                 await bot.api.sendMessage(userId, errorText);
             } else {
                 console.error('bot.api.sendMessage(userId, errorText):', JSON.stringify(errorText));
@@ -185,8 +169,6 @@ export async function handleVoiceMessage(fileId: string, chatId: number, mime_ty
         
     } catch (error) {
         console.error('Error handling voice message:', error);
-        
-        // Отправляем сообщение об ошибке пользователю
         const errorText = '❌ Произошла ошибка при обработке голосового сообщения';
         try {
             if (context?.businessConnectionId) {

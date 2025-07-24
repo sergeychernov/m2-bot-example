@@ -42,8 +42,6 @@ async function initializeBot() {
     await bot.init(); // Явно инициализируем бота, чтобы получить botInfo (ctx.me)
     console.log(`Bot initialized: ${bot.botInfo.username} (ID: ${bot.botInfo.id})`);
 
-    // Установка основных команд в меню бота
-    // Это нужно делать после bot.init(), так как bot.api может быть не готов
     await bot.api.setMyCommands([
       { command: 'start', description: 'Начать работу с ботом' },
       { command: 'help', description: 'Показать справку' },
@@ -63,8 +61,6 @@ async function initializeBot() {
     botInitialized = true;
   } catch (error) {
     console.error('Failed to initialize bot or set commands:', error);
-    // В зависимости от критичности, можно либо выбросить ошибку дальше, либо продолжить без команд
-    // throw error; // Раскомментируйте, если инициализация критична
   }
 }
 
@@ -189,18 +185,15 @@ bot.on('business_message', async (ctx, next) => {
         await chat(ctx, who, businessMessage);
       break;
     case 'user':
-      // Проверяем, что chat.username равен m2assist
       if (fromId) {
         if((await getMode(fromId)) === 'activation'
           && (businessMessage?.chat?.username === 'm2assist' || businessMessage?.chat?.username === 'petrovpaveld')
           && !who.isBot) {
             
           await updateUserBusinessConnection(fromId, businessConnectionId);
-            
-          // Отправляем ответ с business_connection_id и from.id
+
           const responseText = `Ваш бизнес аккаунт связан с панелью администратора, теперь можете настроить бота, теперь ваши клиенты никуда не денутся от вас`;
-            
-          // Отправляем сообщение напрямую пользователю через обычного бота
+
           await Promise.all([bot.api.sendMessage(fromId, responseText), setMode(fromId, 'idle')]);
           } else {
             // если пользователь сам отвечает клиенту
@@ -262,7 +255,6 @@ bot.on('edited_message', async (ctx: Context) => {
 
 let dbDriver: Driver | undefined;
 
-// Обновленный обработчик Cloud Function
 export async function handler(event: any, context?: Context) {
   console.log('Received event:', JSON.stringify(event));
   const iamToken = iam(context);
