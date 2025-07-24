@@ -430,15 +430,7 @@ export interface Client {
   last_name?: string;
   username?: string;
   language_code?: string;
-  quickMode: boolean;
-}
-
-export interface User {
-  id: number;
-  first_name?: string;
-  last_name?: string;
-  username?: string;
-  language_code?: string;
+  quickMode?: boolean;
 }
 
 const clientCache = new Map<number, Client>();
@@ -512,7 +504,7 @@ export async function setClient(client: Client, iamToken?: string): Promise<void
         $last_name: { type: Types.optional(Types.UTF8), value: client.last_name ? { textValue: client.last_name } : { nullFlagValue: 0 } },
         $username: { type: Types.optional(Types.UTF8), value: client.username ? { textValue: client.username } : { nullFlagValue: 0 } },
         $language_code: { type: Types.optional(Types.UTF8), value: client.language_code ? { textValue: client.language_code } : { nullFlagValue: 0 } },
-        $quickMode: { type: Types.optional(Types.BOOL), value: client.quickMode ? { boolValue: client.quickMode } : { nullFlagValue: 0 } },
+        $quickMode: { type: Types.optional(Types.BOOL), value: client.quickMode ? { boolValue: client.quickMode } : { boolValue: false } },
       });
       clientCache.set(client.id, client);
       logger.info(`Client data for ${client.id} added/updated in 'clients' table.`);

@@ -1,8 +1,8 @@
-import {getDriver, User} from './ydb';
+import { getDriver, Client } from './ydb';
 import { Types } from 'ydb-sdk';
 
 export async function addUserData(
-    user: User,
+    user: Client,
     profile: Record<string, any> = {},
     mode: string = 'none',
     iamToken?: string
