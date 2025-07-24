@@ -7,6 +7,7 @@ import {
   // Ydb, // Может понадобиться для доступа к Ydb.IValue, если не экспортируется иначе
 
 } from 'ydb-sdk';
+import { User } from "grammy/types";
 import crypto from 'crypto';
 import { Answered, Who } from './telegram-utils';
 
@@ -424,12 +425,7 @@ export async function closeDriver() {
   }
 }
 
-export interface Client {
-  id: number;
-  first_name?: string;
-  last_name?: string;
-  username?: string;
-  language_code?: string;
+export interface Client extends User {
   quickMode: boolean;
 }
 
@@ -457,11 +453,12 @@ export async function getClient(id: number, iamToken?: string): Promise<Client |
         if (row.items) {
           const client: Client = {
             id: Number(row.items[0].int64Value),
-            first_name: row.items[1].textValue ?? undefined,
+            first_name: row.items[1].textValue ?? '',
             last_name: row.items[2].textValue ?? undefined,
             username: row.items[3].textValue ?? undefined,
             language_code: row.items[4].textValue ?? undefined,
             quickMode: typeof row.items[5]?.boolValue === 'boolean' ? row.items[5].boolValue : false,
+            is_bot: false
           };
           clientCache.set(id, client);
           logger.info(`Client ${id} fetched from DB and cached.`);
@@ -504,7 +501,7 @@ export async function setClient(client: Client, iamToken?: string): Promise<void
         $last_name: { type: Types.optional(Types.UTF8), value: client.last_name ? { textValue: client.last_name } : { nullFlagValue: 0 } },
         $username: { type: Types.optional(Types.UTF8), value: client.username ? { textValue: client.username } : { nullFlagValue: 0 } },
         $language_code: { type: Types.optional(Types.UTF8), value: client.language_code ? { textValue: client.language_code } : { nullFlagValue: 0 } },
-        $quickMode: { type: Types.optional(Types.BOOL), value: client.quickMode ? { boolValue: client.quickMode } : { nullFlagValue: 0 } },
+        $quickMode: { type: Types.optional(Types.BOOL), value: client.quickMode ? { boolValue: client.quickMode } : { boolValue: false } },
       });
       clientCache.set(client.id, client);
       logger.info(`Client data for ${client.id} added/updated in 'clients' table.`);

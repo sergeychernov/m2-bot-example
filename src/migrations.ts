@@ -724,4 +724,90 @@ export const migrations: Migration[] = [
             });
         },
     },
+    {
+        version: 19,
+        name: 'AddTelegramFieldsToUsersTable',
+        async up(driver: Driver, logger: Logger) {
+            logger.info(`Applying migration: AddTelegramFieldsToUsersTable`);
+            try {
+                await driver.queryClient.do({
+                    fn: async (session: QuerySession) => {
+                        // Добавляем first_name
+                        const addFirstNameQuery = `
+                        ALTER TABLE users
+                            ADD COLUMN first_name Utf8;
+                    `;
+                        logger.info('Executing query:\n' + addFirstNameQuery);
+                        await session.execute({ text: addFirstNameQuery });
+
+                        const updateFirstNameQuery = `
+                        UPDATE users
+                        SET first_name = ''
+                    `;
+                        logger.info('Executing query:\n' + updateFirstNameQuery);
+                        await session.execute({ text: updateFirstNameQuery });
+
+                        // last_name
+                        const addLastNameQuery = `
+                        ALTER TABLE users
+                            ADD COLUMN last_name Utf8;
+                    `;
+                        logger.info('Executing query:\n' + addLastNameQuery);
+                        await session.execute({ text: addLastNameQuery });
+
+                        const updateLastNameQuery = `
+                        UPDATE users
+                        SET last_name = ''
+                    `;
+                        logger.info('Executing query:\n' + updateLastNameQuery);
+                        await session.execute({ text: updateLastNameQuery });
+
+                        // username
+                        const addUsernameQuery = `
+                        ALTER TABLE users
+                            ADD COLUMN username Utf8;
+                    `;
+                        logger.info('Executing query:\n' + addUsernameQuery);
+                        await session.execute({ text: addUsernameQuery });
+
+                        const updateUsernameQuery = `
+                        UPDATE users
+                        SET username = ''
+                    `;
+                        logger.info('Executing query:\n' + updateUsernameQuery);
+                        await session.execute({ text: updateUsernameQuery });
+
+                        // language_code
+                        const addLanguageCodeQuery = `
+                        ALTER TABLE users
+                            ADD COLUMN language_code Utf8;
+                    `;
+                        logger.info('Executing query:\n' + addLanguageCodeQuery);
+                        await session.execute({ text: addLanguageCodeQuery });
+
+                        const updateLanguageCodeQuery = `
+                        UPDATE users
+                        SET language_code = ''
+                    `;
+                        logger.info('Executing query:\n' + updateLanguageCodeQuery);
+                        await session.execute({ text: updateLanguageCodeQuery });
+
+                        logger.info('Migration AddTelegramFieldsToUsersTable applied successfully');
+                    }
+                });
+            } catch (error) {
+                if (error instanceof Error) {
+                    if (error.message.includes('already exists') || error.message.includes('Cannot add column to table')) {
+                        logger.warn(`Could not add column, it might already exist or there's another schema issue: ${error.message}`);
+                    } else {
+                        logger.error('Failed to apply migration AddTelegramFieldsToUsersTable:', error);
+                        throw error;
+                    }
+                } else {
+                    logger.error('Failed to apply migration AddTelegramFieldsToUsersTable with a non-Error object:', error);
+                    throw error;
+                }
+            }
+        },
+    },
 ];
