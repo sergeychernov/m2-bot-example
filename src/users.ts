@@ -1,8 +1,9 @@
-import { getDriver, Client } from './ydb';
+import { getDriver } from './ydb';
 import { Types } from 'ydb-sdk';
+import { User } from 'grammy/types';
 
 export async function addUserData(
-    user: Client,
+    user: User,
     profile: Record<string, any> = {},
     mode: string = 'none',
     iamToken?: string
