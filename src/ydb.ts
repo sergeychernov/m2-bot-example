@@ -456,11 +456,12 @@ export async function getClient(id: number, iamToken?: string): Promise<Client |
         if (row.items) {
           const client: Client = {
             id: Number(row.items[0].int64Value),
-            first_name: row.items[1].textValue ?? undefined,
+            first_name: row.items[1].textValue ?? '',
             last_name: row.items[2].textValue ?? undefined,
             username: row.items[3].textValue ?? undefined,
             language_code: row.items[4].textValue ?? undefined,
             quickMode: typeof row.items[5]?.boolValue === 'boolean' ? row.items[5].boolValue : false,
+            is_bot: false
           };
           clientCache.set(id, client);
           logger.info(`Client ${id} fetched from DB and cached.`);
