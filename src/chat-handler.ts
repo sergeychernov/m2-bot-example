@@ -42,8 +42,10 @@ export async function handleBatchMessages(
 	messageIds: number[]
 ) {
 	try {
-		const historyMessages = await getLastChatMessages(chatId, businessConnectionId, 30);
-		const gptSettings = await loadGptSettingsFromDb('base');
+		const [historyMessages, gptSettings] = await Promise.all([
+			getLastChatMessages(chatId, businessConnectionId, 30),
+			loadGptSettingsFromDb('base')
+		]);
 
 		// если риелтор сам отвечает клиенту
 		const isOnlineUser = await isUserOnline(gptSettings?.pauseBotTime, historyMessages);
@@ -91,8 +93,13 @@ export async function handleBatchMessages(
 			console.error(`[handleBatchMessages] Ошибка от gpt в чате ${chatId}, сообщения НЕ помечаем как отвеченные:`, gptResponse?.text);
 			await changeAnsweredStatus(chatId, businessConnectionId, messageIds, false);
 		}
-	} catch (error) {
-		console.error('Ошибка при ответе на сообщение от клиента:', JSON.stringify(error));
+	} catch (err) {
+		console.error('[handleBatchMessages] Ошибка при обработке сообщений:', err, {
+			chatId,
+			businessConnectionId,
+			messageIds
+		});
+		throw err;
 	}
 }
 

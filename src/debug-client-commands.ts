@@ -50,10 +50,12 @@ export async function debugClientCommands(bot: Bot) {
                 const client = await getClient(chatId);
                 if (client) {
                   const newClient = { ...client, quickMode: !client.quickMode };
-                  await setClient(newClient);
-                  await ctx.reply(newClient.quickMode
-                    ? '⚡ Быстрый режим ВКЛЮЧЁН для этого чата.'
-                    : '⏳ Быстрый режим ВЫКЛЮЧЕН для этого чата.');
+                  await Promise.all([
+                    setClient(newClient),
+                    ctx.reply(newClient.quickMode
+                      ? '⚡ Быстрый режим ВКЛЮЧЁН для этого чата.'
+                      : '⏳ Быстрый режим ВЫКЛЮЧЕН для этого чата.')
+                  ]);
                 } else {
                   await ctx.reply('Не удалось найти клиента для этого чата.');
                 }
