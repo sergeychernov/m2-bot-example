@@ -49,11 +49,13 @@ export async function debugClientCommands(bot: Bot) {
                 }
                 const client = await getClient(chatId);
                 if (client) {
-                  client.quickMode = !client.quickMode;
-                  await setClient(client);
-                  await ctx.reply(client.quickMode
-                    ? '⚡ Быстрый режим ВКЛЮЧЁН для этого чата.'
-                    : '⏳ Быстрый режим ВЫКЛЮЧЕН для этого чата.');
+                  const newClient = { ...client, quickMode: !client.quickMode };
+                  await Promise.all([
+                    setClient(newClient),
+                    ctx.reply(newClient.quickMode
+                      ? '⚡ Быстрый режим ВКЛЮЧЁН для этого чата.'
+                      : '⏳ Быстрый режим ВЫКЛЮЧЕН для этого чата.')
+                  ]);
                 } else {
                   await ctx.reply('Не удалось найти клиента для этого чата.');
                 }
@@ -109,10 +111,6 @@ export async function debugClientCommands(bot: Bot) {
 	}
   
 	try {
-	  // Получаем iamToken, если он нужен для getLastTenChatMessages
-	  // В вашем текущем getLastTenChatMessages iamToken опционален, 
-	  // но если бы он был обязателен, его нужно было бы получить здесь, 
-	  // например, из context в serverless-функции или другим способом.
 	  const messages = await getLastChatMessages(chatId, business_connection_id, n);
   
 	  if (messages.length === 0) {

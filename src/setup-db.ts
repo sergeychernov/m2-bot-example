@@ -32,14 +32,7 @@ async function ensureChatsTableExists(iamToken?: string): Promise<void> {
 	  });
 	} catch (error) {
 	  logger.error('Failed to ensure chats table exists:', error);
-	  throw error; // Перебрасываем ошибку, чтобы вызывающий код мог ее обработать
-	} finally {
-	  // Важно: драйвер, созданный в getDriver, должен быть закрыт,
-	  // если он не будет использоваться дальше. 
-	  // Текущая реализация closeDriver() работает с глобальной переменной,
-	  // что может потребовать пересмотра архитектуры управления драйверами.
-	  // Для простоты здесь не вызываем currentDriver.destroy(), 
-	  // предполагая, что управление жизненным циклом драйвера происходит выше.
+	  throw error;
 	}
 }
   
@@ -61,15 +54,15 @@ async function ensurePromptsTableExists(iamToken?: string): Promise<void> {
 			  .withColumn(new Column('dialogPrompt', Types.UTF8))
 			  .withColumn(new Column('promptType', Types.UTF8))
 			  .withColumn(new Column('createdAt', Types.TIMESTAMP))
-			  .withColumn(new Column('model', Types.UTF8)) // Новое поле
-			  .withColumn(new Column('stream', Types.BOOL)) // Новое поле
-			  .withColumn(new Column('temperature', Types.DOUBLE)) // Новое поле
-			  .withColumn(new Column('maxTokens', Types.INT64)) // Новое поле
+			  .withColumn(new Column('model', Types.UTF8))
+			  .withColumn(new Column('stream', Types.BOOL))
+			  .withColumn(new Column('temperature', Types.DOUBLE))
+			  .withColumn(new Column('maxTokens', Types.INT64))
+			  .withColumn(new Column('pauseBotTime', Types.INT64))
 			  .withPrimaryKeys('promptId')
 		  );
 		  logger.info("Table 'prompts' created successfully.");
-  
-		  // Добавляем базовый промпт из файла после создания таблицы
+
 		  try {
 			const promptFilePath = path.resolve(__dirname, 'system_prompt.md');
 			const initialPromptText = fs.readFileSync(promptFilePath, 'utf-8');
@@ -83,8 +76,9 @@ async function ensurePromptsTableExists(iamToken?: string): Promise<void> {
 			  gptConfig.model, 
 			  gptConfig.completionOptions.stream, 
 			  gptConfig.completionOptions.temperature, 
-			  gptConfig.completionOptions.maxTokens, 
-			  iamToken
+			  gptConfig.completionOptions.maxTokens,
+			  10,
+			  iamToken,
 			); 
 			logger.info('Initial base prompt added to DB from system_prompt.md and gpt.json after table creation.');
 		  } catch (fileError) {
@@ -223,7 +217,7 @@ async function ensureMigrationsTableExists(iamToken?: string): Promise<void> {
 		  await session.createTable(
 			'migrations',
 			new TableDescription()
-			  .withColumn(new Column('version', Types.UINT64)) // Используем UINT64 для числового PK
+			  .withColumn(new Column('version', Types.UINT64))
 			  .withColumn(new Column('migration', Types.UTF8))
 			  .withColumn(new Column('timestamp', Types.TIMESTAMP))
 			  .withPrimaryKeys('version')
@@ -247,8 +241,6 @@ async function getAppliedMigrations(driver: Driver): Promise<Set<number>> {
         const { resultSets } = await session.executeQuery(query);
         if (resultSets[0]?.rows) {
             appliedVersions = resultSets[0].rows.map(row => {
-                // Assuming 'version' is stored as UINT64, it might come back as a string or a number depending on the driver/SDK version.
-                // Ensure it's parsed to a number if it's not already.
                 const versionValue = row.items![0].uint64Value;
                 return typeof versionValue === 'string' ? parseInt(versionValue, 10) : Number(versionValue);
             });
@@ -286,11 +278,9 @@ async function applyMigrations(iamToken?: string): Promise<void> {
     logger.info('Applying migrations...');
     const appliedVersions = await getAppliedMigrations(driver);
 
-    // Получаем текущую версию из system
     const system = await getSystem();
     const currentVersion = system.version || 0;
 
-    // Сортируем миграции по версии и фильтруем только те, что больше текущей
     const pendingMigrations = migrations
         .filter(m => m.version > currentVersion)
         .sort((a, b) => a.version - b.version);
@@ -302,7 +292,6 @@ async function applyMigrations(iamToken?: string): Promise<void> {
                 await migration.up(driver, logger);
                 await addMigrationRecord(driver, migration.version, migration.name);
 
-                // Обновляем версию в system после успешного применения миграции
                 await system.setVersion(migration.version);
 
                 logger.info(`Migration ${migration.version}: ${migration.name} applied successfully.`);
@@ -336,7 +325,6 @@ async function ensureSystemTableExists(iamToken?: string): Promise<void> {
         );
         logger.info("Table 'system' created successfully.");
 
-        // Вычисляем максимальную версию из массива миграций
         const maxVersion = Math.max(...migrations.map(m => m.version));
 
         const query = `
@@ -397,7 +385,7 @@ async function ensureBudgetTableExists(iamToken?: string): Promise<void> {
 export async function setupDatabase() {
   try {
     console.log('Starting database setup...');
-    await ensureSystemTableExists(); // Создаем первой
+    await ensureSystemTableExists();
     await ensureChatsTableExists();
     await ensurePromptsTableExists();
     await ensureUsersTableExists();

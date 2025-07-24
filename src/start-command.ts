@@ -32,8 +32,7 @@ export function initializeStartCommand(bot: Bot) {
         try {
             if (await getMode(userId) === 'none') {
                 await setMode(userId, 'start');
-                
-                // Создаем inline клавиатуру с кнопкой
+
                 const keyboard = new InlineKeyboard()
                     .text('📝 Пройти опросник', 'start_quiz');
                 

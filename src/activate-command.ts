@@ -34,10 +34,7 @@ export function initializeActivateCommand(bot: Bot) {
         }
 
         try {
-            // Устанавливаем режим активации
             await setMode(userId, 'activation');
-            
-            // Отправляем инструкцию активации
             await ctx.reply(
                 createActivationMarkdownV2Message(ctx),
                 { parse_mode: 'MarkdownV2' }

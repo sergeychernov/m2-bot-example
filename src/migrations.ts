@@ -810,4 +810,44 @@ export const migrations: Migration[] = [
             }
         },
     },
+    {
+        version: 20,
+        name: 'AddPauseBotTimeToPromptsTable',
+        async up(driver: Driver, logger: Logger) {
+            logger.info(`Applying migration: AddPauseBotTimeToPromptsTable`);
+            try {
+                await driver.queryClient.do({
+                    fn: async (session: QuerySession) => {
+                        const addColumnQuery = `
+                            ALTER TABLE prompts
+                                ADD COLUMN pauseBotTime Int64;
+                        `;
+                        logger.info('Executing query:\n' + addColumnQuery);
+                        await session.execute({ text: addColumnQuery });
+
+                        const updateQuery = `
+                        UPDATE prompts
+                        SET pauseBotTime = 10;
+                    `;
+                        logger.info('Executing query:\n' + updateQuery);
+                        await session.execute({ text: updateQuery });
+
+                        logger.info('Migration AddPauseBotTimeToPromptsTable applied successfully');
+                    }
+                });
+            } catch (error) {
+                if (error instanceof Error) {
+                    if (error.message.includes('already exists') || error.message.includes('Cannot add column to table')) {
+                        logger.warn(`Could not add column answered, it might already exist or there's another schema issue: ${error.message}`);
+                    } else {
+                        logger.error('Failed to apply migration AddPauseBotTimeToPromptsTable:', error);
+                        throw error;
+                    }
+                } else {
+                    logger.error('Failed to apply migration AddPauseBotTimeToPromptsTable with a non-Error object:', error);
+                    throw error;
+                }
+            }
+        },
+    },
 ];

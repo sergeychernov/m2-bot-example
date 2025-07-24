@@ -1,11 +1,15 @@
 import { initializeClientsCommand } from './clients-command';
 import { setIamToken } from './gpt';
 import {
-    Client, getClient,
+    addChatMessage,
+    changeAnsweredStatus,
+    Client,
+    getClient,
     getDriver,
     getMode,
     setClient,
-    setMode, updateChatMessage,
+    setMode,
+    updateChatMessage,
     updateUserBusinessConnection,
     UserMode,
 } from './ydb';
@@ -25,6 +29,7 @@ import { initializeActivateCommand } from './activate-command';
 import { Message } from 'grammy/types';
 import { getUserIdByBusinessConnectionId } from './users';
 import { handleMediaMessage } from './media-handler';
+import { getUnansweredMessageIds } from './process-unanswered-messages';
 
 // Глобальная переменная для отслеживания инициализации
 let botInitialized = false;
@@ -37,8 +42,6 @@ async function initializeBot() {
     await bot.init(); // Явно инициализируем бота, чтобы получить botInfo (ctx.me)
     console.log(`Bot initialized: ${bot.botInfo.username} (ID: ${bot.botInfo.id})`);
 
-    // Установка основных команд в меню бота
-    // Это нужно делать после bot.init(), так как bot.api может быть не готов
     await bot.api.setMyCommands([
       { command: 'start', description: 'Начать работу с ботом' },
       { command: 'help', description: 'Показать справку' },
@@ -58,8 +61,6 @@ async function initializeBot() {
     botInitialized = true;
   } catch (error) {
     console.error('Failed to initialize bot or set commands:', error);
-    // В зависимости от критичности, можно либо выбросить ошибку дальше, либо продолжить без команд
-    // throw error; // Раскомментируйте, если инициализация критична
   }
 }
 
@@ -118,7 +119,7 @@ async function chat(ctx: Context, who: Who, message: Message) {
       }
       return;
   }
-  
+
   if (message.voice) {
     const { file_id, duration, mime_type, file_size } = message.voice as TelegramVoice;
     if (duration < 30 && (file_size ?? 0) < 1000000 && mime_type) {
@@ -184,21 +185,31 @@ bot.on('business_message', async (ctx, next) => {
         await chat(ctx, who, businessMessage);
       break;
     case 'user':
-      // Проверяем, что chat.username равен m2assist
       if (fromId) {
         if((await getMode(fromId)) === 'activation'
           && (businessMessage?.chat?.username === 'm2assist' || businessMessage?.chat?.username === 'petrovpaveld')
           && !who.isBot) {
             
           await updateUserBusinessConnection(fromId, businessConnectionId);
-            
-          // Отправляем ответ с business_connection_id и from.id
+
           const responseText = `Ваш бизнес аккаунт связан с панелью администратора, теперь можете настроить бота, теперь ваши клиенты никуда не денутся от вас`;
-            
-          // Отправляем сообщение напрямую пользователю через обычного бота
+
           await Promise.all([bot.api.sendMessage(fromId, responseText), setMode(fromId, 'idle')]);
           } else {
-            console.warn('TODO: отвечает пользователь, надо добавить в диалог и приостановить работу бота.')
+            // если пользователь сам отвечает клиенту
+            await addChatMessage(
+                businessMessage.chat.id,
+                businessMessage.message_id,
+                businessConnectionId,
+                businessMessage.text || '',
+                who,
+                { status: true, retry: 0, lastRetryAt: new Date().toISOString() },
+                businessMessage.reply_to_message?.text || '',
+            );
+            const messageIds = await getUnansweredMessageIds(businessMessage.chat.id, businessConnectionId);
+            if (messageIds.length > 0) {
+                await changeAnsweredStatus(businessMessage.chat.id, businessConnectionId, messageIds, true);
+            }
         }
       }
       break;
@@ -244,7 +255,6 @@ bot.on('edited_message', async (ctx: Context) => {
 
 let dbDriver: Driver | undefined;
 
-// Обновленный обработчик Cloud Function
 export async function handler(event: any, context?: Context) {
   console.log('Received event:', JSON.stringify(event));
   const iamToken = iam(context);
