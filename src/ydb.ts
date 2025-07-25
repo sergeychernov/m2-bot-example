@@ -136,23 +136,36 @@ export async function updateChatMessage(
 export async function getLastChatMessages(
   chatId: number,
   business_connection_id: string, // Заменено userId на business_connection_id
+  limit?: number,
   iamToken?: string
 ): Promise<ChatMessage[]> {
   const currentDriver = await getDriver(iamToken);
   const tableName = 'chats';
 
-  const query = `
+  let query = `
     PRAGMA TablePathPrefix("${process.env.YDB_DATABASE}");
     DECLARE $chatId AS Int64;
     DECLARE $business_connection_id AS Utf8;
+  `;
 
+  if (limit !== undefined) {
+    query += `\n    DECLARE $limit AS Uint64;`;
+  }
+
+  query += `
     SELECT chatId, messageId, business_connection_id, message, timestamp, who, answered, replied_message
     FROM ${tableName}
     WHERE chatId = $chatId AND business_connection_id = $business_connection_id
-    ORDER BY timestamp DESC;
+    ORDER BY timestamp DESC
   `;
 
-  logger.info(`Executing query: ${JSON.stringify(query)} for chatId: ${chatId}, business_connection_id: ${business_connection_id}`);
+  if (limit !== undefined) {
+    query += `\n    LIMIT $limit`;
+  }
+
+  query += ';';
+
+  logger.info(`Executing query: ${query} for chatId: ${chatId}, business_connection_id: ${business_connection_id}, limit: ${limit}`);
 
   try {
     const messages: ChatMessage[] = [];
