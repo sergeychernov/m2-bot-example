@@ -696,8 +696,8 @@ export const migrations: Migration[] = [
                         timestamp,
                         who,
                         CASE
-                            WHEN answered = true THEN CAST('{"status":true,"retry":1,"lastError":""}' AS Json)
-                            ELSE CAST('{"status":false,"retry":0,"lastRetryAt":"2024-07-10T19:00:00.000Z"}' AS Json)
+                            WHEN answered = true THEN CAST('{"status":true,"retry":0,"lastRetryAt":"2025-07-10T19:00:00.000Z"}' AS Json)
+                            ELSE CAST('{"status":false,"retry":0,"lastRetryAt":"2025-07-10T19:00:00.000Z"}' AS Json)
                         END,
                         replied_message
                     FROM chats;
@@ -845,6 +845,46 @@ export const migrations: Migration[] = [
                     }
                 } else {
                     logger.error('Failed to apply migration AddPauseBotTimeToPromptsTable with a non-Error object:', error);
+                    throw error;
+                }
+            }
+        },
+    },
+    {
+        version: 21,
+        name: 'AddMuteToClientsTable',
+        async up(driver: Driver, logger: Logger) {
+            logger.info(`Applying migration: AddMuteToClientsTable`);
+            try {
+                await driver.queryClient.do({
+                    fn: async (session: QuerySession) => {
+                        const addColumnQuery = `
+                            ALTER TABLE clients
+                                ADD COLUMN mute Json;
+                        `;
+                        logger.info('Executing query:\n' + addColumnQuery);
+                        await session.execute({ text: addColumnQuery });
+
+                        const updateQuery = `
+                        UPDATE clients
+                        SET mute = '{"status":false,"muteUntil":""}';
+                    `;
+                        logger.info('Executing query:\n' + updateQuery);
+                        await session.execute({ text: updateQuery });
+
+                        logger.info('Migration AddMuteToClientsTable applied successfully');
+                    }
+                });
+            } catch (error) {
+                if (error instanceof Error) {
+                    if (error.message.includes('already exists') || error.message.includes('Cannot add column to table')) {
+                        logger.warn(`Could not add column answered, it might already exist or there's another schema issue: ${error.message}`);
+                    } else {
+                        logger.error('Failed to apply migration AddMuteToClientsTable:', error);
+                        throw error;
+                    }
+                } else {
+                    logger.error('Failed to apply migration AddMuteToClientsTable with a non-Error object:', error);
                     throw error;
                 }
             }

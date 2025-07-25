@@ -8,7 +8,7 @@ import {
 } from 'ydb-sdk';
 import { User } from "grammy/types";
 import crypto from 'crypto';
-import { Answered, Who } from './telegram-utils';
+import {Answered, Mute, Who} from './telegram-utils';
 
 const endpoint = process.env.YDB_ENDPOINT;
 const database = process.env.YDB_DATABASE;
@@ -430,6 +430,7 @@ export async function closeDriver() {
 
 export interface Client extends User {
   quickMode: boolean;
+  mute: Mute;
 }
 
 const clientCache = new Map<number, Client>();
@@ -446,7 +447,7 @@ export async function getClient(id: number, iamToken?: string): Promise<Client |
     return await currentDriver.tableClient.withSession(async (session) => {
       const query = `
         DECLARE $id AS Int64;
-        SELECT id, first_name, last_name, username, language_code, quickMode FROM clients WHERE id = $id LIMIT 1;
+        SELECT id, first_name, last_name, username, language_code, quickMode, mute FROM clients WHERE id = $id LIMIT 1;
       `;
       const { resultSets } = await session.executeQuery(query, {
         $id: { type: Types.INT64, value: { int64Value: id } },
@@ -461,6 +462,7 @@ export async function getClient(id: number, iamToken?: string): Promise<Client |
             username: row.items[3].textValue ?? undefined,
             language_code: row.items[4].textValue ?? undefined,
             quickMode: typeof row.items[5]?.boolValue === 'boolean' ? row.items[5].boolValue : false,
+            mute: JSON.parse(row.items![6].textValue!),
             is_bot: false
           };
           clientCache.set(id, client);
@@ -494,8 +496,9 @@ export async function setClient(client: Client, iamToken?: string): Promise<void
         DECLARE $username AS Utf8?;
         DECLARE $language_code AS Utf8?;
         DECLARE $quickMode AS Bool?;
-        UPSERT INTO clients (id, first_name, last_name, username, language_code, quickMode)
-        VALUES ($id, $first_name, $last_name, $username, $language_code, $quickMode);
+        DECLARE $mute AS Json?;
+        UPSERT INTO clients (id, first_name, last_name, username, language_code, quickMode, mute)
+        VALUES ($id, $first_name, $last_name, $username, $language_code, $quickMode, $mute);
       `;
 
       await session.executeQuery(query, {
@@ -505,6 +508,8 @@ export async function setClient(client: Client, iamToken?: string): Promise<void
         $username: { type: Types.optional(Types.UTF8), value: client.username ? { textValue: client.username } : { nullFlagValue: 0 } },
         $language_code: { type: Types.optional(Types.UTF8), value: client.language_code ? { textValue: client.language_code } : { nullFlagValue: 0 } },
         $quickMode: { type: Types.optional(Types.BOOL), value: { boolValue: client.quickMode } },
+        $mute: { type: Types.optional(Types.JSON), value: { textValue: JSON.stringify(client.mute) } },
+
       });
       clientCache.set(client.id, client);
       logger.info(`Client data for ${client.id} added/updated in 'clients' table.`);
@@ -771,4 +776,35 @@ export async function isUserOnline(
   )[0];
 
   return Date.now() - lastUserMessage.timestamp.getTime() < onlineTimeoutMs;
+}
+
+export async function isBotMuted(clientId: number): Promise<boolean> {
+  const client = await getClient(clientId);
+
+  if (!client?.mute?.status) {
+    return false;
+  }
+
+  const now = new Date();
+  const muteUntil = new Date(client.mute.muteUntil);
+
+  if (muteUntil > now) {
+    return true;
+  }
+
+  // если мьют устарел, то снимаем его
+  try {
+    const newClient = {
+      ...client,
+      mute: {
+        status: false,
+        muteUntil: ''
+      }
+    };
+    await setClient(newClient);
+  } catch (e) {
+    console.error(`[isBotMuted] не удалось автоматически переустановить mute для клиента ${clientId}:`, e);
+  }
+
+  return false;
 }
