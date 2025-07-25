@@ -6,7 +6,8 @@ import {
 	getMode,
 	ChatMessage,
 	getAllUnansweredMessages,
-	isUserOnline
+	isUserOnline,
+	isBotMuted
 } from './ydb';
 import {getGPTResponse, loadGptSettingsFromDb, UserMessage} from "./gpt";
 import { Who } from './telegram-utils';
@@ -49,7 +50,8 @@ export async function handleBatchMessages(
 
 		// если риелтор сам отвечает клиенту
 		const isOnlineUser = await isUserOnline(gptSettings?.pauseBotTime, historyMessages);
-		if (isOnlineUser) {
+		const botMuted = await isBotMuted(chatId);
+		if (isOnlineUser || botMuted) {
 			console.log(`[handleBatchMessages] Пользователь онлайн, бот не отвечает (chatId=${chatId})`);
 			return;
 		}
@@ -58,7 +60,7 @@ export async function handleBatchMessages(
 		const mode = await getMode(chatId);
 		const gptResponse = await getGPTResponse(gptMessages, 'base', businessConnectionId, chatId, mode);
 
-		if (!isOnlineUser && gptResponse?.text && !gptResponse.error) {
+		if (!isOnlineUser && !botMuted && gptResponse?.text && !gptResponse.error) {
 			const { bot } = await import('./bot-instance');
 			const { imitateTypingBatch } = await import('./telegram-utils');
 			const textToReply = gptResponse.text;
