@@ -43,7 +43,7 @@ export async function handleBatchMessages(
 ) {
 	try {
 		const [historyMessages, gptSettings] = await Promise.all([
-			getLastChatMessages(chatId, businessConnectionId, 30),
+			getLastChatMessages(chatId, businessConnectionId),
 			loadGptSettingsFromDb('base')
 		]);
 
@@ -109,7 +109,7 @@ export async function handleMessagesInQuickMode(
 ) {
 	try {
 		const mode = await getMode(chatId);
-		const historyMessages = await getLastChatMessages(chatId, businessConnectionId, 30);
+		const historyMessages = await getLastChatMessages(chatId, businessConnectionId);
 		const gptMessages = buildGptMessages(historyMessages);
 		const gptResponse = await getGPTResponse(gptMessages, 'base', businessConnectionId, chatId, mode);
 		if (gptResponse?.text && !gptResponse.error) {
