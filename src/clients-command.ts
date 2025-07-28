@@ -101,11 +101,12 @@ export async function getClientsData(chatIds: number[]): Promise<Client[]> {
           const items = row.items ?? [];
           const client: Client = {
             id: Number(items[0]?.int64Value || 0),
-            first_name: items[1]?.textValue || undefined,
+            first_name: items[1]?.textValue || '',
             last_name: items[2]?.textValue || undefined,
             username: items[3]?.textValue || undefined,
             language_code: items[4]?.textValue || undefined,
             quickMode: items[5]?.boolValue || false,
+            is_bot: false
           };
           clients.push(client);
         }
@@ -177,20 +178,6 @@ export async function getUserClientsWithData(userId: number): Promise<Client[]> 
   const chatIds = await getClientChatIds(userId);
   const clients = await getClientsData(chatIds);
   return clients;
-}
-
-/**
- * Форматирует список chatId для отображения пользователю
- * @param chatIds - Массив chatId
- * @returns Отформатированная строка
- */
-export function formatClientChatIds(chatIds: number[]): string {
-  if (chatIds.length === 0) {
-    return 'У вас пока нет клиентов.';
-  }
-  
-  const chatList = chatIds.map((chatId, index) => `${index + 1}. Chat ID: ${chatId}`).join('\n');
-  return `Ваши клиенты (${chatIds.length}):\n\n${chatList}`;
 }
 
 /**

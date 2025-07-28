@@ -1,6 +1,5 @@
 import { getLatestPromptByType, Prompt, getQuizConfig } from './ydb';
 
-// Объект с возможными значениями моделей
 const AVAILABLE_MODELS = {
   '/yandexgpt-lite/latest': '/yandexgpt-lite/latest',
   '/yandexgpt/latest': '/yandexgpt/latest',
@@ -31,15 +30,13 @@ export async function renderSettingsPage(event: any): Promise<any> {
     pageTitle = `Настройки промпта: ${promptType}`;
     const currentPrompt = await getLatestPromptByType(promptType) as Prompt;
 
-    // Default values
     const promptText = currentPrompt?.promptText || '';
     const rawModel = currentPrompt?.model || DEFAULT_MODEL;
-    // Проверяем, что модель соответствует одному из возможных значений
     const model = Object.keys(AVAILABLE_MODELS).includes(rawModel) ? rawModel : DEFAULT_MODEL;
     const temperature = currentPrompt?.temperature || 0.6;
     const maxTokens = currentPrompt?.maxTokens || 20000;
+    const pauseBotTime = currentPrompt?.pauseBotTime ?? 10;
 
-    // Генерируем опции для select
     const modelOptions = Object.entries(AVAILABLE_MODELS)
       .map(([value, label]) => 
         `<option value="${value}" ${model === value ? 'selected' : ''}>${label}</option>`
@@ -80,6 +77,10 @@ export async function renderSettingsPage(event: any): Promise<any> {
                 <div class="form-group">
                   <label for="maxTokens">Max Tokens:</label>
                   <input type="number" id="maxTokens" name="maxTokens" value="${maxTokens}" min="1" max="20000">
+                </div>
+                <div class="form-group">
+                  <label for="pauseBotTime">Время приостановки бота (мин):</label>
+                  <input type="number" id="pauseBotTime" name="pauseBotTime" value="${pauseBotTime}" min="1" max="1440">
                 </div>
               </div>
             </div>

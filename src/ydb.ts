@@ -4,9 +4,9 @@ import {
   Types,
   TokenAuthService,
   MetadataAuthService,
-  // Ydb, // Может понадобиться для доступа к Ydb.IValue, если не экспортируется иначе
 
 } from 'ydb-sdk';
+import { User } from "grammy/types";
 import crypto from 'crypto';
 import { Answered, Who } from './telegram-utils';
 
@@ -48,8 +48,8 @@ export async function getDriver(iamToken?: string): Promise<Driver> {
 
 export async function addChatMessage(
     chatId: number,
-    messageId: number, // Изменено с string на number
-    business_connection_id: string, // Заменено userId на business_connection_id
+    messageId: number,
+    business_connection_id: string,
     message: string,
     who: Who,
     answered: Answered,
@@ -135,7 +135,7 @@ export async function updateChatMessage(
 
 export async function getLastChatMessages(
   chatId: number,
-  business_connection_id: string, // Заменено userId на business_connection_id
+  business_connection_id: string,
   limit?: number,
   iamToken?: string
 ): Promise<ChatMessage[]> {
@@ -209,7 +209,6 @@ export async function getAllUnansweredMessages(): Promise<ChatMessage[]> {
   `;
   const messages: ChatMessage[] = [];
 
-  // если гпт вернет ошибку, то кидать ему запрос не чаще, чем раз в час
   const now = Date.now();
   const hourMs = 60 * 60 * 1000;
 
@@ -249,7 +248,7 @@ export async function getAllUnansweredMessages(): Promise<ChatMessage[]> {
 
 export async function clearChatMessages(chatId: number): Promise<void> {
   const driver = await getDriver();
-  const tableName = 'chats'; // Имя вашей таблицы
+  const tableName = 'chats';
 
   const query = `
         PRAGMA TablePathPrefix("${process.env.YDB_DATABASE}");
@@ -278,8 +277,8 @@ export async function clearChatMessages(chatId: number): Promise<void> {
 
 export interface ChatMessage {
   chatId: number;
-  messageId: number; // Изменено с string на number (INT64)
-  business_connection_id: string; // Заменено userId на business_connection_id (UTF8)
+  messageId: number;
+  business_connection_id: string;
   message: string;
   timestamp: Date;
   who: Who;
@@ -294,23 +293,25 @@ export interface Prompt {
   dialogPrompt?: string;
   promptType: string;
   createdAt: Date;
-  model: string; // Новое поле
-  stream: boolean; // Новое поле
-  temperature: number; // Новое поле
-  maxTokens: number; // Новое поле
+  model: string;
+  stream: boolean;
+  temperature: number;
+  maxTokens: number;
+  pauseBotTime: number;
 }
 
 export async function addPrompt(
   promptText: string,
   promptType: string,
-  model: string, // Новый параметр
-  stream: boolean, // Новый параметр
-  temperature: number, // Новый параметр
-  maxTokens: number, // Новый параметр
+  model: string,
+  stream: boolean,
+  temperature: number,
+  maxTokens: number,
+  pauseBotTime: number,
   iamToken?: string
 ): Promise<string> {
   const currentDriver = await getDriver(iamToken);
-  const promptId = crypto.randomUUID(); // Генерируем UUID для promptId
+  const promptId = crypto.randomUUID();
   const createdAt = new Date();
 
   const lastPrompt = await getLatestPromptByType(promptType, iamToken);
@@ -330,9 +331,10 @@ export async function addPrompt(
         DECLARE $maxTokens AS Int64;
         DECLARE $greetingPrompt AS Utf8;
         DECLARE $dialogPrompt AS Utf8;
+        DECLARE $pauseBotTime AS Int64;
 
-        UPSERT INTO prompts (promptId, promptText, promptType, createdAt, model, stream, temperature, maxTokens, greetingPrompt, dialogPrompt)
-        VALUES ($promptId, $promptText, $promptType, $createdAt, $model, $stream, $temperature, $maxTokens, $greetingPrompt, $dialogPrompt);
+        UPSERT INTO prompts (promptId, promptText, promptType, createdAt, model, stream, temperature, maxTokens, greetingPrompt, dialogPrompt, pauseBotTime)
+        VALUES ($promptId, $promptText, $promptType, $createdAt, $model, $stream, $temperature, $maxTokens, $greetingPrompt, $dialogPrompt, $pauseBotTime);
       `;
 
       const timestampMicroseconds = createdAt.getTime() * 1000;
@@ -348,6 +350,7 @@ export async function addPrompt(
         $maxTokens: { type: Types.INT64, value: { int64Value: maxTokens } },
         $greetingPrompt: { type: Types.UTF8, value: { textValue: greetingPrompt ?? '' } },
         $dialogPrompt: { type: Types.UTF8, value: { textValue: dialogPrompt ?? '' } },
+        $pauseBotTime: { type: Types.INT64, value: { int64Value: pauseBotTime } },
       });
       logger.info(`Prompt ${promptId} of type ${promptType} added to 'prompts' table.`);
     });
@@ -365,7 +368,7 @@ export async function getLatestPromptByType(promptType: string, iamToken?: strin
       const query = `
         DECLARE $promptType AS Utf8;
 
-        SELECT promptId, promptText, greetingPrompt, dialogPrompt, promptType, createdAt, model, \`stream\`, temperature, maxTokens
+        SELECT promptId, promptText, greetingPrompt, dialogPrompt, promptType, createdAt, model, \`stream\`, temperature, maxTokens, pauseBotTime
         FROM prompts
         WHERE promptType = $promptType
         ORDER BY createdAt DESC
@@ -390,6 +393,7 @@ export async function getLatestPromptByType(promptType: string, iamToken?: strin
             stream: row.items[7].boolValue || false,
             temperature: row.items[8].doubleValue || 0.6,
             maxTokens: Number(row.items[9].int64Value) || 20000,
+            pauseBotTime: Number(row.items[10]?.int64Value) || 10,
           };
         }
       }
@@ -433,12 +437,7 @@ export async function closeDriver() {
   }
 }
 
-export interface Client {
-  id: number;
-  first_name?: string;
-  last_name?: string;
-  username?: string;
-  language_code?: string;
+export interface Client extends User {
   quickMode: boolean;
 }
 
@@ -466,11 +465,12 @@ export async function getClient(id: number, iamToken?: string): Promise<Client |
         if (row.items) {
           const client: Client = {
             id: Number(row.items[0].int64Value),
-            first_name: row.items[1].textValue ?? undefined,
+            first_name: row.items[1].textValue ?? '',
             last_name: row.items[2].textValue ?? undefined,
             username: row.items[3].textValue ?? undefined,
             language_code: row.items[4].textValue ?? undefined,
             quickMode: typeof row.items[5]?.boolValue === 'boolean' ? row.items[5].boolValue : false,
+            is_bot: false
           };
           clientCache.set(id, client);
           logger.info(`Client ${id} fetched from DB and cached.`);
@@ -513,7 +513,7 @@ export async function setClient(client: Client, iamToken?: string): Promise<void
         $last_name: { type: Types.optional(Types.UTF8), value: client.last_name ? { textValue: client.last_name } : { nullFlagValue: 0 } },
         $username: { type: Types.optional(Types.UTF8), value: client.username ? { textValue: client.username } : { nullFlagValue: 0 } },
         $language_code: { type: Types.optional(Types.UTF8), value: client.language_code ? { textValue: client.language_code } : { nullFlagValue: 0 } },
-        $quickMode: { type: Types.optional(Types.BOOL), value: client.quickMode ? { boolValue: client.quickMode } : { nullFlagValue: 0 } },
+        $quickMode: { type: Types.optional(Types.BOOL), value: { boolValue: client.quickMode } },
       });
       clientCache.set(client.id, client);
       logger.info(`Client data for ${client.id} added/updated in 'clients' table.`);
@@ -760,4 +760,24 @@ export async function updateUserBusinessConnection(userId: number, businessConne
     logger.error('Failed to update user business connection:', error);
     throw error;
   }
+}
+
+export async function isUserOnline(
+    timeoutMinutes: number = 10,
+    messages: ChatMessage[]
+): Promise<boolean> {
+  const onlineTimeoutMs = timeoutMinutes * 60 * 1000;
+  const userMessages = messages.filter(
+      m => m.who.role === 'user' && !m.who.isBot
+  );
+
+  if (userMessages.length === 0) {
+    return false;
+  }
+
+  const lastUserMessage = userMessages.sort(
+      (a, b) => b.timestamp.getTime() - a.timestamp.getTime()
+  )[0];
+
+  return Date.now() - lastUserMessage.timestamp.getTime() < onlineTimeoutMs;
 }

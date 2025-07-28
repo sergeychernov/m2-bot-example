@@ -39,9 +39,11 @@ export async function handleSettingsPost(event: any): Promise<any> {
       const temperature = temperatureStr ? parseFloat(temperatureStr) : 0.6;
       const maxTokensStr = params.get('maxTokens');
       const maxTokens = maxTokensStr ? parseInt(maxTokensStr, 10) : 20000;
+      const pauseBotTimeStr = params.get('pauseBotTime');
+      const pauseBotTime = pauseBotTimeStr ? parseInt(pauseBotTimeStr, 10) : 10;
       const stream = false;
 
-      await addPrompt(promptText, formType, model, stream, temperature, maxTokens);
+      await addPrompt(promptText, formType, model, stream, temperature, maxTokens, pauseBotTime);
     } else if (formType === 'promptDetails') {
       const greetingText = params.get('greetingText')?.replace(/\r\n/g, '\n') || '';
       const dialogText = params.get('dialogText')?.replace(/\r\n/g, '\n') || '';

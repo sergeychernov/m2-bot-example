@@ -1,7 +1,13 @@
 import { getDriver } from './ydb';
 import { Types } from 'ydb-sdk';
+import { User } from 'grammy/types';
 
-export async function addUserData(userId: number, profile: Record<string, any>, mode: string = 'none', iamToken?: string): Promise<void> {
+export async function addUserData(
+    user: User,
+    profile: Record<string, any> = {},
+    mode: string = 'none',
+    iamToken?: string
+): Promise<void> {
   const currentDriver = await getDriver(iamToken);
   try {
     await currentDriver.tableClient.withSession(async (session) => {
@@ -9,15 +15,23 @@ export async function addUserData(userId: number, profile: Record<string, any>, 
         DECLARE $userId AS Int64;
         DECLARE $profile AS Json;
         DECLARE $mode AS Utf8;
-        UPSERT INTO users (userId, profile, mode)
-        VALUES ($userId, $profile, $mode);
+        DECLARE $first_name AS Utf8?;
+        DECLARE $last_name AS Utf8?;
+        DECLARE $username AS Utf8?;
+        DECLARE $language_code AS Utf8?;
+        UPSERT INTO users (userId, profile, mode, first_name, last_name, username, language_code)
+        VALUES ($userId, $profile, $mode, $first_name, $last_name, $username, $language_code);
       `;
       await session.executeQuery(query, {
-        $userId: { type: Types.INT64, value: { int64Value: userId } },
+        $userId: { type: Types.INT64, value: { int64Value: user.id } },
         $profile: { type: Types.JSON, value: { textValue: JSON.stringify(profile) } },
         $mode: { type: Types.UTF8, value: { textValue: mode } },
+        $first_name: { type: Types.optional(Types.UTF8), value: { textValue: user.first_name ?? '' } },
+        $last_name: { type: Types.optional(Types.UTF8), value: { textValue: user.last_name ?? '' } },
+        $username: { type: Types.optional(Types.UTF8), value: { textValue: user.username ?? '' } },
+        $language_code: { type: Types.optional(Types.UTF8), value: { textValue: user.language_code ?? '' } },
       });
-      console.info(`User data for ${userId} added/updated in 'users' table.`);
+      console.info(`User data for ${user.id} added/updated in 'users' table.`);
     });
   } catch (error) {
     console.error('Failed to add user data:', JSON.stringify(error));
@@ -77,7 +91,6 @@ export async function getUserDataByBusinessConnectionId(businessConnectionId: st
   }
 }
 
-// Новая функция: получить userId по business_connection_id
 export async function getUserIdByBusinessConnectionId(businessConnectionId: string, iamToken?: string): Promise<number | null> {
   const currentDriver = await getDriver(iamToken);
   try {
@@ -101,7 +114,6 @@ export async function getUserIdByBusinessConnectionId(businessConnectionId: stri
   }
 }
 
-// Новая функция: получить business_connection_id по userId
 export async function getBusinessConnectionIdByUserId(userId: number, iamToken?: string): Promise<string | null> {
   const currentDriver = await getDriver(iamToken);
   try {

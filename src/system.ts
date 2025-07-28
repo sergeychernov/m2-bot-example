@@ -109,18 +109,15 @@ class System {
         return System.initPromise;
     }
 
-    // Геттеры для системных значений
     public get version(): number | undefined {
         return this.values.get('version') as number | undefined;
     }
 
-    // Сеттеры для системных значений
     public async setVersion(value: number): Promise<void> {
         await this.setValue('version', value, 'parseInt');
     }
 }
 
-// Экспортируем функцию для получения инстанса
 export async function getSystem(): Promise<System> {
     return System.getInstance();
 }
