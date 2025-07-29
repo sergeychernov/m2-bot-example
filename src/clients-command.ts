@@ -1,12 +1,9 @@
-import {getDriver, Client, getClient, getLastChatMessages, getMode, ChatMessage, isBotMuted, setClient} from './ydb';
+import { getDriver, getLastChatMessages, getMode, ChatMessage } from './ydb';
 import { getBusinessConnectionIdByUserId } from './users';
 import { Context, InlineKeyboard } from 'grammy';
 import { Types } from 'ydb-sdk';
 import { getGPTResponse, loadGptSettingsFromDb, UserMessage } from './gpt';
-
-export interface ClientChat {
-  chatId: number;
-}
+import { Client, checkAndClearExpiredBotMute, getClient, setClient } from './clients';
 
 /**
  * Получает уникальный список chatId клиентов из таблицы chats по userId
@@ -166,7 +163,7 @@ export function createClientsKeyboard(clients: Client[]): InlineKeyboard {
     let displayName = getClientDisplayName(client);
 
     if (client.mute?.status) {
-      displayName += ' ▶';
+      displayName += ' ▶️';
     }
 
     keyboard.text(displayName, `client_${client.id}`).row();
@@ -234,7 +231,7 @@ export function initializeClientsCommand(bot: any) {
     const businessConnectionId = userId === clientId ? '' : await getBusinessConnectionIdByUserId(userId);
     if (!businessConnectionId && userId != clientId) {
       console.error('Cannot get business connection ID from context');
-      await ctx.reply('Ошибка: не удалось определить вашу связь бизнес аккаунтом, напишите любое сообщение в @m2assist.');
+      await ctx.reply('Ошибка: не удалось определить вашу связь с бизнес-аккаунтом, напишите любое сообщение в @m2assist.');
       return;
     }
 
@@ -268,10 +265,10 @@ export function initializeClientsCommand(bot: any) {
       const keyboard = new InlineKeyboard();
       updateKeyboard(client, keyboard);
 
-      const botMuted = await isBotMuted(clientId);
+      const botMuted = await checkAndClearExpiredBotMute(clientId);
 
       keyboard.row().text(
-          botMuted ? '▶ Возобновить бота' : '⏸ Приостановить бота',
+          botMuted ? '▶️ Возобновить бота' : '⏸️ Приостановить бота',
           `${botMuted ? 'resume' : 'pause'}_bot:${clientId}`
       );
 
@@ -328,7 +325,7 @@ export function initializeClientsCommand(bot: any) {
       const keyboard = new InlineKeyboard();
       updateKeyboard(client, keyboard);
       keyboard.row().text(
-          pause ? '▶ Возобновить бота' : '⏸ Приостановить бота',
+          pause ? '▶️ Возобновить бота' : '⏸️ Приостановить бота',
           `${pause ? 'resume' : 'pause'}_bot:${clientId}`
       );
 

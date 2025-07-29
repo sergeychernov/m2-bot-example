@@ -5,13 +5,13 @@ import {
 	changeAnsweredStatus,
 	getMode,
 	ChatMessage,
-	getAllUnansweredMessages,
-	isUserOnline,
-	isBotMuted
+	getAllUnansweredMessages
 } from './ydb';
-import {getGPTResponse, loadGptSettingsFromDb, UserMessage} from "./gpt";
+import { getGPTResponse, loadGptSettingsFromDb, UserMessage } from './gpt';
 import { Who } from './telegram-utils';
 import { Message } from 'grammy/types';
+import { isUserOnline } from './users';
+import { checkAndClearExpiredBotMute } from './clients';
 
 export async function chatHandler(
 	ctx: Context,
@@ -50,7 +50,7 @@ export async function handleBatchMessages(
 
 		// если риелтор сам отвечает клиенту
 		const isOnlineUser = await isUserOnline(gptSettings?.pauseBotTime, historyMessages);
-		const botMuted = await isBotMuted(chatId);
+		const botMuted = await checkAndClearExpiredBotMute(chatId);
 		if (isOnlineUser || botMuted) {
 			console.log(`[handleBatchMessages] Пользователь онлайн, бот не отвечает (chatId=${chatId})`);
 			return;

@@ -1,4 +1,4 @@
-import { getDriver } from './ydb';
+import {ChatMessage, getDriver} from './ydb';
 import { Types } from 'ydb-sdk';
 import { User } from 'grammy/types';
 
@@ -135,4 +135,24 @@ export async function getBusinessConnectionIdByUserId(userId: number, iamToken?:
     console.error('Failed to get businessConnectionId by userId:', JSON.stringify(error));
     throw error;
   }
+}
+
+export async function isUserOnline(
+    timeoutMinutes: number = 10,
+    messages: ChatMessage[]
+): Promise<boolean> {
+  const onlineTimeoutMs = timeoutMinutes * 60 * 1000;
+  const userMessages = messages.filter(
+      m => m.who.role === 'user' && !m.who.isBot
+  );
+
+  if (userMessages.length === 0) {
+    return false;
+  }
+
+  const lastUserMessage = userMessages.sort(
+      (a, b) => b.timestamp.getTime() - a.timestamp.getTime()
+  )[0];
+
+  return Date.now() - lastUserMessage.timestamp.getTime() < onlineTimeoutMs;
 }
