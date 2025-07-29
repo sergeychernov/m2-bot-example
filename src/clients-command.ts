@@ -195,16 +195,16 @@ export function initializeClientsCommand(bot: any) {
         await ctx.reply('Не удалось определить ваш ID пользователя.');
         return;
       }
-
+      
       const clients = await getUserClientsWithData(userId);
-
+      
       if (clients.length === 0) {
         await ctx.reply('У вас пока нет клиентов.');
         return;
       }
-
+      
       const keyboard = createClientsKeyboard(clients);
-      await ctx.reply(`Ваши клиенты (${clients.length}):`, {reply_markup: keyboard});
+      await ctx.reply(`Ваши клиенты (${clients.length}):`, { reply_markup: keyboard });
     } catch (error) {
       console.error('Error in /clients command:', error);
       await ctx.reply('Произошла ошибка при получении списка клиентов.');
@@ -234,10 +234,10 @@ export function initializeClientsCommand(bot: any) {
       await ctx.reply('Ошибка: не удалось определить вашу связь с бизнес-аккаунтом, напишите любое сообщение в @m2assist.');
       return;
     }
-
-    const historyMessages = await getLastChatMessages(clientId, businessConnectionId || '', 50);
+    
+    const historyMessages = await getLastChatMessages(clientId, businessConnectionId || '');
     console.log('client_', clientId, userId, businessConnectionId, historyMessages.length);
-    // Формируем только сообщения пользователя и ассистента для передачи в getGPTResponse
+            // Формируем только сообщения пользователя и ассистента для передачи в getGPTResponse
     const gptMessages: UserMessage[] = historyMessages.map((v: ChatMessage) => {
       if (v.replied_message) {
         return {
@@ -250,17 +250,17 @@ export function initializeClientsCommand(bot: any) {
         text: v.message
       }
     });
+	
+	if (!ctx.from) {
+		console.error('Cannot get user ID from context');
+		await ctx.reply('Ошибка: не удалось определить пользователя.');
+		return;
+	}
 
-    if (!ctx.from) {
-      console.error('Cannot get user ID from context');
-      await ctx.reply('Ошибка: не удалось определить пользователя.');
-      return;
-    }
-
-    const gptResponse = await getGPTResponse(gptMessages, 'summary', businessConnectionId || '', clientId, mode);
-
+	const gptResponse = await getGPTResponse(gptMessages, 'summary', businessConnectionId || '', clientId, mode);
+	
     if (gptResponse && gptResponse.text && client && !gptResponse.error) {
-      let message = `*Информация о клиенте ${getClientDisplayName(client)}*\n\n` + `${gptResponse.text}`;
+      let message = `*Информация о клиенте ${getClientDisplayName(client)}*\n\n`+`${gptResponse.text}`;
 
       const keyboard = new InlineKeyboard();
       updateKeyboard(client, keyboard);

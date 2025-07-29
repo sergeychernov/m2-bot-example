@@ -28,6 +28,7 @@ import { Message } from 'grammy/types';
 import { getUserIdByBusinessConnectionId } from './users';
 import { handleMediaMessage } from './media-handler';
 import { getUnansweredMessageIds } from './process-unanswered-messages';
+import { getAddressFromLocation } from './location-handler';
 
 // Глобальная переменная для отслеживания инициализации
 let botInitialized = false;
@@ -108,7 +109,7 @@ async function chat(ctx: Context, who: Who, message: Message) {
   const mode = await getMode(message.chat.id);
 
   // TODO: реализовать распознавание файлов
-  if (message.photo || message.animation || message.document) {
+  if (message.photo || message.animation || message.document || message.video || message.video_note || message.audio) {
       try {
           const id = mode === 'demo' ? message.chat.id : userId;
           await handleMediaMessage(ctx, message, id);
@@ -140,7 +141,14 @@ async function chat(ctx: Context, who: Who, message: Message) {
     } else {
       console.log('TODO: async voice processing')
     }
-  }   
+  }
+
+  if (message.location) {
+      const address = await getAddressFromLocation(message.location.latitude, message.location.longitude);
+      if (address) {
+          message = {...message, text: `Клиент отправил адрес: ${address}`};
+      }
+  }
   try {
       const chatId = ctx.chat?.id;
       if (!chatId) {
