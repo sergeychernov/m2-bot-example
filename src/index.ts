@@ -193,7 +193,7 @@ bot.on('business_message', async (ctx, next) => {
     case 'user':
       if (fromId) {
         if((await getMode(fromId)) === 'activation'
-          && (businessMessage?.chat?.username === 'm2assist' || businessMessage?.chat?.username === 'petrovpaveld')
+          && (businessMessage?.chat?.username === 'realtoririnapetrova' || businessMessage?.chat?.username === 'petrovpaveld')
           && !who.isBot) {
             
           await updateUserBusinessConnection(fromId, businessConnectionId);

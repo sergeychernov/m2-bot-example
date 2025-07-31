@@ -231,7 +231,7 @@ export function initializeClientsCommand(bot: any) {
     const businessConnectionId = userId === clientId ? '' : await getBusinessConnectionIdByUserId(userId);
     if (!businessConnectionId && userId != clientId) {
       console.error('Cannot get business connection ID from context');
-      await ctx.reply('Ошибка: не удалось определить вашу связь с бизнес-аккаунтом, напишите любое сообщение в @m2assist.');
+      await ctx.reply('Ошибка: не удалось определить вашу связь с бизнес-аккаунтом, напишите любое сообщение в @realtoririnapetrova.');
       return;
     }
     

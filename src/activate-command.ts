@@ -15,7 +15,7 @@ export function createActivationMarkdownV2Message(ctx: CommandContext<Context>) 
         `1️⃣ ${escapeMarkdownV2('Подключить ваш бизнес-аккаунт в Telegram')}\n` +
         `2️⃣ ${escapeMarkdownV2('Добавить этого бота @'+(ctx.me?.username || 'этого_бота')+' к вашему бизнес-аккаунту\n')}` +
         `3️⃣ ${escapeMarkdownV2('В настройках доступа обязательно разрешить читать сообщения и отвечать на них')}\n` +
-        `4️⃣ ${escapeMarkdownV2(`Напишите любое сообщение: @${ctx.from?.username === 'm2assist' ? 'petrovpaveld' : 'm2assist'} чтобы привязать бота к своему аккаунту`)}\n`
+        `4️⃣ ${escapeMarkdownV2(`Напишите любое сообщение: @${ctx.from?.username === 'realtoririnapetrova' ? 'petrovpaveld' : 'realtoririnapetrova'} чтобы привязать бота к своему аккаунту`)}\n`
 			+`✅ ${final}`
     );
 }
