@@ -3,16 +3,14 @@ import { setIamToken } from './gpt';
 import {
     addChatMessage,
     changeAnsweredStatus,
-    Client,
-    getClient,
     getDriver,
     getMode,
-    setClient,
     setMode,
     updateChatMessage,
     updateUserBusinessConnection,
     UserMode,
 } from './ydb';
+import { Client, getClient, setClient } from './clients';
 
 import { iam } from './iam';
 import { Driver } from 'ydb-sdk';

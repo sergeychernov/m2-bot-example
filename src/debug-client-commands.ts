@@ -1,7 +1,7 @@
 import { Bot, Context, NextFunction } from "grammy";
 import { clearChatMessages, getLastChatMessages } from "./ydb";
-import { getBusinessConnectionIdByUserId, getUserIdByBusinessConnectionId } from "./users";
-import { getClient, setClient } from './ydb';
+import { getBusinessConnectionIdByUserId } from "./users";
+import { getClient, setClient } from './clients';
 
 export async function debugClientCommands(bot: Bot) {
 	const commandHandler = async (ctx: Context, next: NextFunction) => {

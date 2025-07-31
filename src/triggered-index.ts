@@ -3,6 +3,7 @@ import { iam } from './iam';
 import { setIamToken } from './gpt';
 import { getDriver, closeDriver } from './ydb';
 import { setupDatabase } from './setup-db';
+import { checkBotMuteForAllClients } from "./clients";
 
 export async function handler(event: any, context?: any) {
   const iamToken = iam(context);
@@ -34,7 +35,7 @@ export async function handler(event: any, context?: any) {
     
       if (payload.replies_scheduler && iamToken) {
         await getDriver(iamToken);
-        await processAllUnansweredChats();
+        await executeTriggeredFunctions();
         return { statusCode: 200, body: 'Unanswered chats processed (from cron)' };
       }
     } catch (e) {
@@ -46,4 +47,11 @@ export async function handler(event: any, context?: any) {
   }
 
   return { statusCode: 200, body: 'OK. No action taken.' };
+}
+
+async function executeTriggeredFunctions () {
+  await Promise.all([
+    processAllUnansweredChats(),
+    checkBotMuteForAllClients()
+  ]);
 }
