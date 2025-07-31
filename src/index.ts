@@ -17,7 +17,7 @@ import { Driver } from 'ydb-sdk';
 import { setupDatabase } from './setup-db';
 import { debugClientCommands } from './debug-client-commands';
 import { chatHandler } from './chat-handler';
-import { initializeQuiz, startQuizWithFreshConfig } from './quiz-handler';
+import { initializeQuiz } from './quiz-handler';
 import { initializeStartCommand } from './start-command';
 import { bot } from './bot-instance';
 import { handleVoiceMessage } from './voice-handler';
@@ -193,7 +193,7 @@ bot.on('business_message', async (ctx, next) => {
     case 'user':
       if (fromId) {
         if((await getMode(fromId)) === 'activation'
-          && (businessMessage?.chat?.username === 'm2assist' || businessMessage?.chat?.username === 'petrovpaveld')
+          && (businessMessage?.chat?.username === 'realtoririnapetrova' || businessMessage?.chat?.username === 'petrovpaveld')
           && !who.isBot) {
             
           await updateUserBusinessConnection(fromId, businessConnectionId);
