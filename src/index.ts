@@ -156,8 +156,9 @@ async function chat(ctx: Context, who: Who, message: Message) {
       }
 
       const client = await getClient(chatId);
-      const quickMode = client?.quickMode;
-      await Promise.all([setClient({...ctx.from, quickMode} as Client), chatHandler(ctx, who, message, quickMode)]);
+      const quickMode = client?.quickMode || false;
+      const mute = client?.mute || { status: false, muteUntil: '' };
+      await Promise.all([setClient({...ctx.from, quickMode, mute} as Client), chatHandler(ctx, who, message, quickMode)]);
   } catch (error) {
       console.error('Error in chat:', JSON.stringify(error));
   }
