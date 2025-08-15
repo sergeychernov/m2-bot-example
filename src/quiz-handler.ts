@@ -1,7 +1,34 @@
 import { Bot, Context } from 'grammy';
-import { createQuiz, QuizConfig } from './quiz';
+import { createTelegramQuiz } from './telegram-quiz';
+import { ydbStorage, createYdbCallbacks } from './quiz-adapters';
 import { deleteQuizState, getMode, getQuizConfig, setMode } from './ydb';
 import { bot } from './bot-instance';
+
+let quizInstance: ReturnType<typeof createTelegramQuiz> | null = null;
+
+async function ensureQuizInstance() {
+    if (!quizInstance) {
+        console.log('Creating new quiz instance');
+        const quizConfig = await loadQuizConfigFromDb();
+        if (!quizConfig) {
+            throw new Error('Quiz config not found');
+        }
+        
+        console.log('Quiz config loaded, creating quiz instance');
+        quizInstance = createTelegramQuiz({
+            bot,
+            config: quizConfig,
+            storage: ydbStorage,
+            callbacks: createYdbCallbacks(quizConfig),
+            parseMode: 'HTML',
+            namespace: 'main'
+        });
+        console.log('Quiz instance created successfully');
+    } else {
+        console.log('Using existing quiz instance');
+    }
+    return quizInstance;
+}
 
 export function initializeQuiz(bot: Bot) {
     bot.command('quiz', async (ctx) => {
@@ -23,49 +50,29 @@ export function initializeQuiz(bot: Bot) {
         }
         const mode = await getMode(userId);
         if (mode === 'quiz') {
-            const quiz = await ensureQuiz(ctx);
-            if (!quiz) {
-                return;
+            try {
+                const quiz = await ensureQuizInstance();
+                await quiz.handleText(ctx);
+            } catch (error) {
+                console.error('Error handling quiz text:', error);
+                await ctx.reply('Ошибка: не удалось загрузить квиз.');
             }
-            await quiz.handleQuizText(ctx);
             return;
         }
         return next();
     });
 
-    bot.callbackQuery(/simple_quiz_(.+)/, async (ctx) => {
-        const quiz = await ensureQuiz(ctx);
-        if (!quiz) {
-            return;
+    bot.callbackQuery(/^tq_main_/, async (ctx) => {
+        console.log('Хеллоу');
+        try {
+            const quiz = await ensureQuizInstance();
+            await quiz.handleCallback(ctx);
+        } catch (error) {
+            console.error('Error handling quiz callback:', error);
+            console.error('Error stack:', error instanceof Error ? error.stack : 'No stack trace');
+            await ctx.answerCallbackQuery({ text: 'Ошибка при обработке квиза' });
         }
-        quiz.handleQuizButton(ctx);
     });
-
-    bot.callbackQuery(/^multi_/, async (ctx) => {
-        const quiz = await ensureQuiz(ctx);
-        if (!quiz) {
-            return;
-        }
-        await quiz.handleMultiSelect(ctx);
-    });
-
-    bot.callbackQuery('exit_quiz', async (ctx) => {
-        const quiz = await ensureQuiz(ctx);
-        if (!quiz) {
-            return;
-        }
-        quiz.handleQuizExit(ctx);
-    });
-}
-
-async function ensureQuiz(ctx: Context): Promise<ReturnType<typeof createQuiz> | null> {
-    const quizConfig = await loadQuizConfigFromDb();
-    if (quizConfig) {
-        return createQuiz(quizConfig);
-    } else {
-        await ctx.reply('Ошибка: не удалось загрузить квиз.');
-        return null;
-    }
 }
 
 export async function resetQuizStateForUser(ctx: Context) {
@@ -82,20 +89,16 @@ export async function startQuizWithFreshConfig(userId: number, allowExit = false
     }
     
     try {
-        const quizConfig = await loadQuizConfigFromDb();
-        if (!quizConfig) {
-            await bot.api.sendMessage(userId, '❌ Квиз не настроен');
-            return;
-        }
-        const quiz = createQuiz(quizConfig);
-        await quiz.startQuiz(userId, allowExit);
+        quizInstance = null;
+        const quiz = await ensureQuizInstance();
+        await quiz.start(userId, { allowExit });
     } catch (error) {
         console.error('Error starting quiz with fresh config for user:', JSON.stringify(error));
         await bot.api.sendMessage(userId, '❌ Ошибка при запуске квиза');
     }
 }
 
-export async function loadQuizConfigFromDb(): Promise<QuizConfig | null> {
+export async function loadQuizConfigFromDb() {
     try {
         const config = await getQuizConfig();
         if (!config) {

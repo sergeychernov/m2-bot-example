@@ -1,0 +1,17 @@
+{
+    "window.commandCenter": true,
+    "workbench.colorTheme": "Cursor Dark Midnight",
+    "ai.customModels": {
+        "videocat-gemma-3-27b": {
+            "baseUrl": "http://videocat-01-analytics.ru-central1.internal/",
+            "apiKey": "",
+            "model": "gemma-3-27b-it-GGUF/BF16/gemma-3-27b-it-BF16-00001-of-00002.gguf",
+            "contextLength": 131072,
+            "temperature": 0.7,
+            "maxTokens": 4096,
+            "systemPrompt": "Ты - эксперт по программированию в Cursor IDE. Отвечай на русском языке, если пользователь обращается на русском. Помогай с написанием, отладкой и рефакторингом кода. Предоставляй подробные объяснения и примеры кода."
+        }
+    },
+    "ai.defaultModel": "videocat-gemma-3-27b",
+    "ai.provider": "custom"
+} 
