@@ -153,29 +153,27 @@ async function ensureUsersTableExists(iamToken?: string): Promise<void> {
 	}
 }
 
-async function ensureQuizStatesTableExists(iamToken?: string): Promise<void> {
+async function ensureQuizProgressTableExists(iamToken?: string): Promise<void> {
 	const currentDriver = await getDriver(iamToken);
 	try {
 		await currentDriver.tableClient.withSession(async (session) => {
 			try {
-				await session.describeTable('quiz_states');
-				logger.info("Table 'quiz_states' already exists.");
+				await session.describeTable('quiz_progress');
+				logger.info("Table 'quiz_progress' already exists.");
 			} catch (error: any) {
-				logger.info("Table 'quiz_states' not found, creating...");
+				logger.info("Table 'quiz_progress' not found, creating...");
 				await session.createTable(
-					'quiz_states',
+					'quiz_progress',
 					new TableDescription()
 						.withColumn(new Column('userId', Types.INT64))
 						.withColumn(new Column('step', Types.INT32))
-						.withColumn(new Column('answers', Types.JSON))
-						.withColumn(new Column('allowExit', Types.BOOL))
 						.withPrimaryKeys('userId')
 				);
-				logger.info("Table 'quiz_states' created successfully.");
+				logger.info("Table 'quiz_progress' created successfully.");
 			}
 		});
 	} catch (error) {
-		logger.error('Failed to ensure quiz_states table exists:', error);
+		logger.error('Failed to ensure quiz_progress table exists:', error);
 		throw error;
 	}
 }
@@ -201,7 +199,7 @@ async function ensureQuizConfigsTableExists(iamToken?: string): Promise<void> {
 			}
 		});
 	} catch (error) {
-		logger.error('Failed to ensure quiz_states table exists:', error);
+		logger.error('Failed to ensure quiz_progress table exists:', error);
 		throw error;
 	}
 }
@@ -391,7 +389,7 @@ export async function setupDatabase() {
     await ensurePromptsTableExists();
     await ensureUsersTableExists();
 	await ensureClientsTableExists();
-	await ensureQuizStatesTableExists();
+	await ensureQuizProgressTableExists();
 	await ensureQuizConfigsTableExists();
 	await ensureBudgetTableExists();
     await ensureMigrationsTableExists();

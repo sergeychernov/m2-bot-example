@@ -228,6 +228,9 @@ bot.on('business_message', async (ctx, next) => {
 
 // Обработчик для админки с ботом
 bot.on('message', async (ctx, next) => {
+  if (ctx.from?.is_bot) {
+      return next();
+  }
   console.log('message.Received message:', JSON.stringify(ctx));
   const userId = ctx.from?.id;
   const mode: UserMode = userId ? await getMode(userId) : 'none';

@@ -4,9 +4,8 @@ import {
   Types,
   TokenAuthService,
   MetadataAuthService,
-
+  Session,
 } from 'ydb-sdk';
-import { User } from "grammy/types";
 import crypto from 'crypto';
 import {Answered, Mute, Who} from './telegram-utils';
 
@@ -437,70 +436,62 @@ export async function closeDriver() {
   }
 }
 
-export async function saveQuizState(
-  userId: number,
-  step: number,
-  answers: Record<string, any>,
-  allowExit: boolean
-): Promise<void> {
+export async function saveQuizProgress(userId: number, step: number): Promise<void> {
   const currentDriver = await getDriver();
   await currentDriver.tableClient.withSession(async (session) => {
     const query = `
       DECLARE $userId AS Int64;
       DECLARE $step AS Int32;
-      DECLARE $answers AS Json;
-      DECLARE $allowExit AS Bool;
-      UPSERT INTO quiz_states (userId, step, answers, allowExit)
-      VALUES ($userId, $step, $answers, $allowExit);
+      UPSERT INTO quiz_progress (userId, step)
+      VALUES ($userId, $step);
     `;
     await session.executeQuery(query, {
       $userId: { type: Types.INT64, value: { int64Value: userId } },
       $step: { type: Types.INT32, value: { int32Value: step } },
-      $answers: { type: Types.JSON, value: { textValue: JSON.stringify(answers) } },
-      $allowExit: { type: Types.BOOL, value: { boolValue: allowExit } },
     });
   });
 }
 
-export async function loadQuizState(
-  userId: number,
-): Promise<{ step: number; answers: Record<string, any>; allowExit: boolean } | null> {
-  const currentDriver = await getDriver();
-  return await currentDriver.tableClient.withSession(async (session) => {
-    const query = `
-      DECLARE $userId AS Int64;
-      SELECT step, answers, allowExit FROM quiz_states
-      WHERE userId = $userId
-      LIMIT 1;
-    `;
-    const { resultSets } = await session.executeQuery(query, {
-      $userId: { type: Types.INT64, value: { int64Value: userId } },
+export async function loadQuizProgress(
+    userId: number
+): Promise<number | null> {
+  const driver = await getDriver();
+
+  try {
+    const { resultSets } = await driver.tableClient.withSession(async (session: Session) => {
+      return session.executeQuery(`
+        DECLARE $userId AS Uint64;
+        SELECT step FROM quiz_progress
+        WHERE userId = $userId
+        LIMIT 1;
+      `, {
+        $userId: { type: Types.UINT64, value: { uint64Value: userId } }
+      });
     });
-    if (resultSets[0]?.rows && resultSets[0].rows.length > 0) {
-      const row = resultSets[0].rows[0];
-      if (
-        row.items &&
-        typeof row.items[0]?.int32Value === 'number' &&
-        typeof row.items[1]?.textValue === 'string' &&
-        typeof row.items[2]?.boolValue === 'boolean'
-      ) {
-        return {
-          step: row.items[0].int32Value,
-          answers: JSON.parse(row.items[1].textValue),
-          allowExit: row.items[2].boolValue,
-        };
-      }
+
+    // Явная типизация результата
+    const row = resultSets?.[0]?.rows?.[0];
+    if (!row) {
+      return null;
     }
+
+    const stepValue = row?.items?.[0].int32Value;
+    return typeof stepValue === 'number' ? stepValue : null;
+
+  } catch (error) {
+    console.error('Failed to load quiz step:', error);
     return null;
-  });
+  } finally {
+    await driver.destroy();
+  }
 }
 
-export async function deleteQuizState(userId: number): Promise<void> {
+export async function deleteQuizProgress(userId: number): Promise<void> {
   const currentDriver = await getDriver();
   await currentDriver.tableClient.withSession(async (session) => {
     const query = `
       DECLARE $userId AS Int64;
-      DELETE FROM quiz_states WHERE userId = $userId;
+      DELETE FROM quiz_progress WHERE userId = $userId;
     `;
     await session.executeQuery(query, {
       $userId: { type: Types.INT64, value: { int64Value: userId } },
