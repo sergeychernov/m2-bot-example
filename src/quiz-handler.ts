@@ -1,7 +1,33 @@
-import { Bot, Context } from 'grammy';
-import { createQuiz, QuizConfig } from './quiz';
-import { deleteQuizState, getMode, getQuizConfig, setMode } from './ydb';
-import { bot } from './bot-instance';
+import {Bot, Context} from 'grammy';
+import {QuizCallbacks, QuizConfig, Quiz} from './quiz';
+import {deleteQuizProgress, getMode, getQuizConfig, loadQuizProgress, saveQuizProgress, setMode} from './ydb';
+import {addUserData, getUserDataByUserId} from "./users";
+
+const createQuizCallbacks = (quizConfig: QuizConfig): QuizCallbacks => ({
+    loadQuizStep: async (userId: number) => loadQuizProgress(userId),
+    saveQuizStep: async (userId: number, step: number) => saveQuizProgress(userId, step),
+    onQuizStart: (userId) => {
+        console.log(`Quiz started for ${userId}`);
+        return setMode(userId, 'quiz');
+    },
+    onQuizAnswer: async (userId, questionId, answer) => {
+        const user = await getUserDataByUserId(userId);
+        const question = quizConfig.questions.find(q => q.id === questionId);
+        if (!question) return;
+
+        await addUserData(
+            { id: userId } as any,
+            { ...user?.profile, [question.key]: answer },
+            await getMode(userId) || 'none'
+        );
+        console.log('EEEEEEEEE');
+    },
+    onQuizEnd: async (userId) => {
+        await setMode(userId, 'none');
+        await deleteQuizProgress(userId);
+    }
+});
+
 
 export function initializeQuiz(bot: Bot) {
     bot.command('quiz', async (ctx) => {
@@ -12,56 +38,60 @@ export function initializeQuiz(bot: Bot) {
         }
         await setMode(userId, 'quiz');
         if (typeof ctx.from?.id === 'number') {
-            await startQuizWithFreshConfig(ctx.from.id, true);
+            await startQuizWithFreshConfig(ctx, true);
         }
     });
 
     bot.on('message:text', async (ctx, next) => {
         const userId = ctx.from?.id;
-        if (!userId) {
-            return;
-        }
+        if (!userId) return next();
+
         const mode = await getMode(userId);
         if (mode === 'quiz') {
             const quiz = await ensureQuiz(ctx);
-            if (!quiz) {
+            if (quiz) {
+                await quiz.handleTextAnswer();
                 return;
             }
-            await quiz.handleQuizText(ctx);
-            return;
         }
-        return next();
+
+        await next();
     });
 
-    bot.callbackQuery(/simple_quiz_(.+)/, async (ctx) => {
+    bot.callbackQuery(/^quiz_/, async (ctx) => {
+        const quizConfig = await loadQuizConfigFromDb();
+        if (!quizConfig) {
+            return;
+        }
+
         const quiz = await ensureQuiz(ctx);
+
         if (!quiz) {
             return;
         }
-        quiz.handleQuizButton(ctx);
-    });
+        const action = ctx.callbackQuery.data?.split('_')[1];
 
-    bot.callbackQuery(/^multi_/, async (ctx) => {
-        const quiz = await ensureQuiz(ctx);
-        if (!quiz) {
-            return;
+        switch (action) {
+            case 'button':
+                await quiz.handleButtonAction();
+                break;
+            case 'multi':
+                await quiz.handleMultiSelectAction();
+                break;
+            case 'exit':
+                await quiz.handleExitAction();
+                break;
         }
-        await quiz.handleMultiSelect(ctx);
-    });
-
-    bot.callbackQuery('exit_quiz', async (ctx) => {
-        const quiz = await ensureQuiz(ctx);
-        if (!quiz) {
-            return;
-        }
-        quiz.handleQuizExit(ctx);
     });
 }
 
-async function ensureQuiz(ctx: Context): Promise<ReturnType<typeof createQuiz> | null> {
+async function ensureQuiz(ctx: Context) {
     const quizConfig = await loadQuizConfigFromDb();
-    if (quizConfig) {
-        return createQuiz(quizConfig);
+    const userId = ctx.from?.id;
+
+    if (quizConfig && userId) {
+        const quizCallbacks = createQuizCallbacks(quizConfig);
+        return new Quiz(quizConfig, quizCallbacks, ctx);
     } else {
         await ctx.reply('Ошибка: не удалось загрузить квиз.');
         return null;
@@ -71,27 +101,30 @@ async function ensureQuiz(ctx: Context): Promise<ReturnType<typeof createQuiz> |
 export async function resetQuizStateForUser(ctx: Context) {
     if (ctx.from) {
         const userId = ctx.from.id;
-        await deleteQuizState(userId);
+        await deleteQuizProgress(userId);
     }
 }
 
-export async function startQuizWithFreshConfig(userId: number, allowExit = false) {
-    if (!userId || typeof userId !== 'number') {
-        console.error('Invalid userId provided to startQuizWithFreshConfigForUser:', userId);
+export async function startQuizWithFreshConfig(ctx: Context, allowExit: boolean = false): Promise<void> {
+    const userId = ctx.from?.id;
+    if (!userId) {
+        console.error('Invalid userId provided');
         return;
     }
-    
+
     try {
         const quizConfig = await loadQuizConfigFromDb();
         if (!quizConfig) {
-            await bot.api.sendMessage(userId, '❌ Квиз не настроен');
+            await ctx.reply('❌ Квиз не настроен');
             return;
         }
-        const quiz = createQuiz(quizConfig);
-        await quiz.startQuiz(userId, allowExit);
+
+        const quizCallbacks = createQuizCallbacks(quizConfig);
+        const quiz = new Quiz(quizConfig, quizCallbacks, ctx);
+        await quiz.startQuiz();
     } catch (error) {
-        console.error('Error starting quiz with fresh config for user:', JSON.stringify(error));
-        await bot.api.sendMessage(userId, '❌ Ошибка при запуске квиза');
+        console.error('Error starting quiz:', error);
+        await ctx.reply('❌ Ошибка при запуске квиза');
     }
 }
 

@@ -1,8 +1,10 @@
 import { Context, InlineKeyboard } from 'grammy';
-import { saveQuizState, loadQuizState, deleteQuizState, setMode, getMode } from './ydb';
-import { formatProfileMarkdownV2 } from './telegram-utils';
-import { bot } from './bot-instance';
-import { getUserDataByUserId, addUserData } from './users';
+import { formatProfileMarkdownV2 } from "./telegram-utils";
+
+// Добавляем тип для сессии
+interface QuizSessionData {
+  selectedOptions: Record<string, string[]>;
+}
 
 export type QuizQuestion = {
   id: string;
@@ -12,15 +14,17 @@ export type QuizQuestion = {
   options?: string[];
   required?: boolean;
   imageUrl?: string;
-  validation?: {
-    type: 'email' | 'phone' | 'url' | 'number' | 'minLength' | 'maxLength' | 'pattern' | 'custom';
-    pattern?: string;
-    minLength?: number;
-    maxLength?: number;
-    min?: number;
-    max?: number;
-    errorMessage?: string;
-  };
+  validation?: QuestionValidation;
+};
+
+type QuestionValidation = {
+  type: 'email' | 'phone' | 'url' | 'number' | 'minLength' | 'maxLength' | 'pattern' | 'custom';
+  pattern?: string;
+  minLength?: number;
+  maxLength?: number;
+  min?: number;
+  max?: number;
+  errorMessage?: string;
 };
 
 export type QuizConfig = {
@@ -33,409 +37,399 @@ export type QuizConfig = {
   questions: QuizQuestion[];
 };
 
-export function createQuiz(quizConfig: QuizConfig) {
-  const { questions, quizDescription, exitText, successText, buttonLabels } = quizConfig;
+export type QuizCallbacks = {
+  loadQuizStep: (userId: number) => Promise<number | null>;
+  saveQuizStep: (userId: number, step: number) => Promise<void>;
+  onQuizStart?: (userId: number) => void;
+  onQuizAnswer?: (userId: number, questionId: string, answer: any) => Promise<void>;
+  onQuizEnd?: (userId: number) => void;
+};
 
-  async function saveUserFromState(ctx: Context, state: { answers: Record<string, any> }) {
-    if (ctx.from) {
-      const userId = ctx.from.id
-      const oldData = await getUserDataByUserId(userId) || { profile: {} };
-      const newData: Record<string, any> = { ...oldData.profile };
-      for (const question of quizConfig.questions) {
-        if (state.answers[question.id]) {
-          newData[question.key] = state.answers[question.id];
-        }
-      }
-      try {
-        const mode = await getMode(userId) || 'none';
-        await addUserData(ctx.from, newData, mode);
-      } catch (e) {
-        console.log('Данные не удалось сохранить', e);
-      }
+export class Quiz {
+  private currentAnswers: Record<string, any> = {};
+  private keyboardCache = new Map<string, InlineKeyboard>();
+
+  constructor(
+      private readonly config: QuizConfig,
+      private readonly callbacks: QuizCallbacks,
+      private readonly ctx: Context & { session?: QuizSessionData }
+  ) {}
+
+  public async startQuiz(): Promise<void> {
+    const userId = this.getUserId();
+    if (!userId) return;
+
+    // Инициализируем сессию
+    this.initSession();
+
+    // Сбрасываем текущие ответы
+    this.currentAnswers = {};
+    this.keyboardCache.clear();
+
+    // Загружаем текущий шаг или начинаем с начала
+    const step = await this.callbacks.loadQuizStep(userId) ?? 0;
+    await this.callbacks.saveQuizStep(userId, step);
+
+    this.callbacks.onQuizStart?.(userId);
+
+    if (this.config.quizDescription) {
+      await this.sendMessage(this.config.quizDescription);
+    }
+
+    await this.sendQuestion(step);
+  }
+
+  private initSession() {
+    if (!this.ctx.session) {
+      this.ctx.session = { selectedOptions: {} };
+    } else if (!this.ctx.session.selectedOptions) {
+      this.ctx.session.selectedOptions = {};
     }
   }
 
-  async function startQuiz(userId: number, allowExit = false) {
-    if (!userId) {
+  public async handleTextAnswer(): Promise<void> {
+    const userId = this.getUserId();
+    if (!userId || !this.ctx.message?.text) return;
+
+    const step = await this.callbacks.loadQuizStep(userId) ?? 0;
+    const question = this.config.questions[step];
+
+    if (!question || question.type !== 'text') {
+      console.error(`Question not found or wrong type at step ${step}`);
       return;
     }
 
-    let state = await loadQuizState(userId);
-    if (!state) {
-      state = { step: 0, answers: {}, allowExit };
-      await saveQuizState(userId, 0, {}, allowExit);
+    const text = this.ctx.message.text.trim();
+    const validation = this.validateAnswer(text, question.validation);
+
+    if (!validation.isValid) {
+      await this.sendMessage(validation.errorMessage || '⚠️ Неверный формат ответа');
+      return;
     }
-    if (quizDescription) {
-      await bot.api.sendMessage(userId, quizDescription);
+
+    this.currentAnswers[question.id] = text;
+    if (this.callbacks.onQuizAnswer) {
+      await this.callbacks.onQuizAnswer(userId, question.id, text);
     }
-    await sendQuestion(userId, state);
+
+    const nextStep = step + 1;
+    await this.callbacks.saveQuizStep(userId, nextStep);
+    await this.proceedToNextStep(nextStep);
   }
 
-  async function sendQuestion(userId: number, state: { step: number; answers: Record<string, any>; allowExit: boolean }) {
-    try {
-      const currentQ = questions[state.step];
-      if (!currentQ) return;
-      let keyboard: InlineKeyboard | undefined = undefined;
+  public async handleButtonAction(): Promise<void> {
+    const userId = this.getUserId();
+    if (!userId || !this.ctx.callbackQuery?.data) return;
 
-      if (currentQ.type === 'buttons') {
-        keyboard = new InlineKeyboard();
-        currentQ.options?.forEach((option: string) => keyboard!.text(option, `simple_quiz_${currentQ.id}_${option}`).row());
-      }
-      if (currentQ.type === 'multi-select') {
-        const selected: string[] = Array.isArray(state.answers[currentQ.id]) ? state.answers[currentQ.id] as string[] : [];
-        keyboard = new InlineKeyboard();
-        for (const option of currentQ.options || []) {
-          keyboard.text(
-            `${selected.includes(option) ? "✅" : "  "} ${option}`,
-            `multi_${currentQ.id}_${option}`
-          ).row();
-        }
-        keyboard.text("➡️ Готово", `multi_done_${currentQ.id}`);
-      }
-      if (state.allowExit && buttonLabels?.exit) {
-        (keyboard ??= new InlineKeyboard()).text(buttonLabels.exit, 'exit_quiz').row();
-      }
-      const messageOptions = {
-        reply_markup: keyboard?.inline_keyboard.length ? keyboard : undefined,
-        parse_mode: 'HTML' as const
+    await this.ctx.answerCallbackQuery();
+    const step = await this.callbacks.loadQuizStep(userId) ?? 0;
+    const question = this.config.questions[step];
+
+    if (!question || question.type !== 'buttons') {
+      console.error(`Question not found or wrong type at step ${step}`);
+      return;
+    }
+
+    const match = this.ctx.callbackQuery.data.match(/^quiz_button_(.+?)_(.+)$/);
+    if (!match || match[1] !== question.id) return;
+
+    const answer = match[2];
+    this.currentAnswers[question.id] = answer;
+
+    if (this.callbacks.onQuizAnswer) {
+      await this.callbacks.onQuizAnswer(userId, question.id, answer);
+    }
+
+    const nextStep = step + 1;
+    await this.callbacks.saveQuizStep(userId, nextStep);
+    await this.proceedToNextStep(nextStep);
+  }
+
+  public async handleMultiSelectAction(): Promise<void> {
+    const userId = this.getUserId();
+    if (!userId || !this.ctx.callbackQuery?.data) return;
+
+    await this.ctx.answerCallbackQuery();
+    const step = await this.callbacks.loadQuizStep(userId) ?? 0;
+    const question = this.config.questions[step];
+
+    if (!question || question.type !== 'multi-select') {
+      console.error(`Wrong question type at step ${step}`);
+      return;
+    }
+
+    const callbackData = this.ctx.callbackQuery.data;
+    const isDoneAction = callbackData.startsWith('quiz_multi_done_');
+    const isSelectAction = callbackData.startsWith(`quiz_multi_${question.id}_`);
+
+    if (isSelectAction) {
+      const option = callbackData.split('_')[3];
+      let selected = this.ctx.session?.selectedOptions?.[question.id] || [];
+
+      selected = selected.includes(option)
+          ? selected.filter(o => o !== option)
+          : [...selected, option];
+
+      this.ctx.session!.selectedOptions = {
+        ...this.ctx.session?.selectedOptions,
+        [question.id]: selected
       };
-      if (currentQ.imageUrl) {
-        await bot.api.sendPhoto(userId, currentQ.imageUrl, {
-          caption: currentQ.question,
-          ...messageOptions,
-        });
-      } else {
-        await bot.api.sendMessage(userId, currentQ.question, messageOptions);
-      }
-    } catch (e) {
-      console.error('Ошибка в sendQuestion:', JSON.stringify(e));
-    }
-  }
 
-  async function handleQuizText(ctx: Context) {
-    try {
-      if (!ctx.chat || !ctx.message || typeof ctx.message.text !== 'string') return;
-      const userId = ctx.from?.id;
-
-      if (!userId) {
-        return;
-      }
-
-      let state = await ensureQuizState(ctx, loadQuizState);
-      if (!state) return;
-
-      const currentQ = questions[state.step];
-      if (currentQ.type === 'text') {
-        const validationResult = validateAnswer(ctx.message.text, currentQ.validation);
-        if (!validationResult.isValid) {
-          await ctx.reply(validationResult.errorMessage || 'Ответ не прошел валидацию');
-          return;
-        }
-        state.answers[currentQ.id] = ctx.message.text;
-        state.step += 1;
-        await saveUserFromState(ctx, state);
-        await saveQuizState(userId, state.step, state.answers, state.allowExit);
-        if (state.step < questions.length) {
-          await sendQuestion(ctx.from?.id, state);
-        } else {
-          await showQuizResult(ctx, state.answers);
-          await deleteQuizState(userId);
-        }
-      } else if (currentQ.type === 'buttons' || currentQ.type === 'multi-select') {
-        await ctx.reply('Пожалуйста, выберите ответ из предложенных вариантов с помощью кнопок.');
-      }
-    } catch (e) {
-      console.error('Ошибка в handleQuizText:', e);
-      try { await ctx.reply('Произошла ошибка при обработке вашего ответа.'); } catch { }
-    }
-  }
-
-  async function handleQuizButton(ctx: Context) {
-    try {
-      if (!ctx.chat || !ctx.match) return;
-      const userId = ctx.from?.id;
-      if (!userId) {
-        return;
-      }
-
-      let state = await ensureQuizState(ctx, loadQuizState);
-      if (!state) return;
-
-      const currentQ = questions[state.step];
-      if (currentQ.type !== 'buttons') {
-        await ctx.answerCallbackQuery();
-        return;
-      }
-      const data = ctx.callbackQuery?.data;
-      if (!data) {
-        await ctx.answerCallbackQuery();
-        return;
-      }
-      const match = data.match(/^simple_quiz_(.+?)_(.+)$/);
-      if (!match) {
-        await ctx.answerCallbackQuery();
-        return;
-      }
-      const questionId = match[1];
-      const option = match[2];
-      if (currentQ.id !== questionId) {
-        await ctx.answerCallbackQuery();
-        return;
-      }
-      state.answers[currentQ.id] = option;
-      state.step += 1;
-      await saveUserFromState(ctx, state);
-      await saveQuizState(userId, state.step, state.answers, state.allowExit);
-      await ctx.answerCallbackQuery();
-      if (state.step < questions.length) {
-        await sendQuestion(ctx.from?.id, state);
-      } else {
-        await showQuizResult(ctx, state.answers);
-        await deleteQuizState(userId);
-      }
-    } catch (e) {
-      console.error('Ошибка в handleQuizButton:', e);
-      try { await ctx.reply('Произошла ошибка при обработке ответа на кнопку.'); } catch { }
-    }
-  }
-
-  async function handleQuizExit(ctx: Context) {
-    try {
-      if (!ctx.chat) return;
-      const userId = ctx.from?.id;
-      if (!userId) {
-        return;
-      }
-      await deleteQuizState(userId);
-      if (exitText) {
-        await setMode(userId, 'none');
-        await ctx.reply(exitText);
-      }
-    } catch (e) {
-      console.error('Ошибка в handleQuizExit:', e);
-      try { await ctx.reply('Произошла ошибка при выходе из квиза.'); } catch { }
-    }
-  }
-
-  async function handleMultiSelect(ctx: Context) {
-    try {
-      if (!ctx.chat || !ctx.callbackQuery) return;
-      const userId = ctx.from?.id;
-      if (!userId) return;
-
-      let state = await ensureQuizState(ctx, loadQuizState);
-      if (!state) return;
-
-      const currentQ = questions[state.step];
-      if (currentQ.type !== 'multi-select') {
-        await ctx.answerCallbackQuery();
-        return;
-      }
-      const data = ctx.callbackQuery.data;
-      if (!data) return;
-      const doneMatch = data.match(/^multi_done_(.+)$/);
-      const selectMatch = data.match(/^multi_(.+?)_(.+)$/);
-      if (doneMatch) {
-        const questionId = doneMatch[1];
-        if (currentQ.id !== questionId) {
-          await ctx.answerCallbackQuery();
-          return;
-        }
-        let selected: string[] = Array.isArray(state.answers[currentQ.id]) ? state.answers[currentQ.id] as string[] : [];
-        if (selected.length === 0) {
-          await ctx.answerCallbackQuery({ text: "Выберите хотя бы один вариант!" });
-          return;
-        }
-        state.step += 1;
-        await saveUserFromState(ctx, state);
-        await saveQuizState(userId, state.step, state.answers, state.allowExit);
-        await ctx.answerCallbackQuery();
-        if (state.step < questions.length) {
-          await sendQuestion(ctx.from?.id, state);
-        } else {
-          await showQuizResult(ctx, state.answers);
-          await deleteQuizState(userId);
-        }
-        return;
-      } else if (selectMatch) {
-        const questionId = selectMatch[1];
-        const option = selectMatch[2];
-        if (currentQ.id !== questionId) {
-          await ctx.answerCallbackQuery();
-          return;
-        }
-        let selected: string[] = Array.isArray(state.answers[currentQ.id]) ? state.answers[currentQ.id] as string[] : [];
-        if (selected.includes(option)) {
-          selected = selected.filter(o => o !== option);
-        } else {
-          selected.push(option);
-        }
-        state.answers[currentQ.id] = [...selected];
-        await saveQuizState(userId, state.step, state.answers, state.allowExit);
-         const keyboard = new InlineKeyboard();
-          for (const option of currentQ.options || []) {
-            keyboard.text(
-              `${selected.includes(option) ? "✅" : "  "} ${option}`,
-              `multi_${currentQ.id}_${option}`
-            ).row();
-          }
-        keyboard.text("➡️ Готово", `multi_done_${currentQ.id}`);
-        await bot.api.editMessageReplyMarkup(
-          ctx.chat.id,
-          ctx.callbackQuery.message!.message_id,
-          {
-            reply_markup: keyboard?.inline_keyboard.length ? keyboard : undefined,
-          }
-        );
-        await ctx.answerCallbackQuery();
-      } else {
-        await ctx.answerCallbackQuery();
-      }
-    } catch (e) {
-      console.error('Ошибка в handleMultiSelect:', e);
-      try { await ctx.reply('Произошла ошибка при выборе варианта.'); } catch { }
-    }
-  }
-
-  async function showQuizResult(ctx: Context, answers: Record<string, any>) {
-    const userId = ctx.from?.id;
-    if (!userId) {
+      await this.updateKeyboard(question, selected);
       return;
     }
-    await setMode(userId, 'idle');
+
+    if (isDoneAction) {
+      const selected = this.ctx.session?.selectedOptions?.[question.id] || [];
+
+      if (question.required && selected.length === 0) {
+        await this.ctx.answerCallbackQuery({ text: "⚠️ Выберите хотя бы один вариант!" });
+        return;
+      }
+
+      this.currentAnswers[question.id] = selected;
+
+      if (this.callbacks.onQuizAnswer) {
+        await this.callbacks.onQuizAnswer(userId, question.id, selected);
+      }
+
+      const nextStep = step + 1;
+      await this.callbacks.saveQuizStep(userId, nextStep);
+      await this.proceedToNextStep(nextStep);
+    }
+  }
+
+  private async updateKeyboard(question: QuizQuestion, selected: string[]): Promise<void> {
+    const cacheKey = `${question.id}_${selected.sort().join(',')}`;
+
+    if (!this.keyboardCache.has(cacheKey)) {
+      const keyboard = new InlineKeyboard();
+
+      question.options?.forEach(option => {
+        keyboard.text(
+            `${selected.includes(option) ? "✅" : "◻️"} ${option}`,
+            `quiz_multi_${question.id}_${option}`
+        ).row();
+      });
+
+      keyboard.text("➡️ Готово", `quiz_multi_done_${question.id}`);
+      this.keyboardCache.set(cacheKey, keyboard);
+    }
+
+    const keyboard = this.keyboardCache.get(cacheKey);
+
+    if (keyboard && this.ctx.chat?.id && this.ctx.callbackQuery?.message?.message_id) {
+      await this.ctx.api.editMessageReplyMarkup(
+          this.ctx.chat.id,
+          this.ctx.callbackQuery.message.message_id,
+          { reply_markup: keyboard }
+      );
+    }
+  }
+
+  public async handleExitAction(): Promise<void> {
+    const userId = this.getUserId();
+    if (!userId) return;
+
+    await this.ctx.answerCallbackQuery();
+    this.callbacks.onQuizEnd?.(userId);
+
+    if (this.config.exitText) {
+      await this.sendMessage(this.config.exitText);
+    }
+  }
+
+  // Вспомогательные методы
+  private async sendQuestion(step: number): Promise<void> {
+    const question = this.config.questions[step];
+    if (!question) return;
+
+    const keyboard = this.createKeyboard(question, step);
+    const options = {
+      reply_markup: keyboard?.inline_keyboard.length ? keyboard : undefined,
+      parse_mode: 'HTML' as const
+    };
+
+    if (question.imageUrl) {
+      await this.ctx.api.sendPhoto(this.getUserId()!, question.imageUrl, {
+        caption: question.question,
+        ...options
+      });
+    } else {
+      await this.sendMessage(question.question, options);
+    }
+  }
+
+  private createKeyboard(question: QuizQuestion, step: number): InlineKeyboard | undefined {
+    const keyboard = new InlineKeyboard();
+
+    if (question.type === 'buttons') {
+      question.options?.forEach(option =>
+          keyboard.text(option, `quiz_button_${question.id}_${option}`).row()
+      );
+    }
+    else if (question.type === 'multi-select') {
+      const selected = this.getSelectedOptions(question.id);
+      question.options?.forEach(option =>
+          keyboard.text(
+              `${selected.includes(option) ? "✅" : " "} ${option}`,
+              `quiz_multi_${question.id}_${option}`
+          ).row()
+      );
+      keyboard.text("➡️ Готово", `quiz_multi_done_${question.id}`);
+    }
+
+    // Добавляем кнопку выхода, если она есть в конфиге
+    if (this.config.buttonLabels?.exit) {
+      keyboard.text(this.config.buttonLabels.exit, 'quiz_exit').row();
+    }
+
+    return keyboard;
+  }
+
+  private async proceedToNextStep(step: number): Promise<void> {
+    if (step < this.config.questions.length) {
+      await this.sendQuestion(step);
+    } else {
+      await this.showResults();
+      await this.callbacks.onQuizEnd?.(this.getUserId()!);
+    }
+  }
+
+  private async showResults(): Promise<void> {
+    const userId = this.getUserId();
+    if (!userId) return;
+
     const profileForDisplay: Record<string, any> = {};
-    for (const q of questions) {
-      if (answers[q.id] !== undefined) {
-        profileForDisplay[q.key] = answers[q.id];
+    for (const q of this.config.questions) {
+      if (this.currentAnswers[q.id] !== undefined) {
+        profileForDisplay[q.key] = this.currentAnswers[q.id];
       }
     }
-    if (successText) {
-      await ctx.reply(successText);
+
+    if (this.config.successText) {
+      await this.sendMessage(this.config.successText);
     }
 
     const result = formatProfileMarkdownV2(profileForDisplay);
     try {
-      await ctx.reply(result, { parse_mode: 'MarkdownV2' });
+      await this.sendMessage(result, { parse_mode: 'MarkdownV2' });
     } catch (e) {
       console.error('Ошибка при отправке MarkdownV2:', e, 'Текст:', result);
     }
   }
 
-  return {
-    startQuiz,
-    handleQuizText,
-    handleQuizButton,
-    handleQuizExit,
-    handleMultiSelect,
-  };
-}
+  private getSelectedOptions(questionId: string): string[] {
+    const answer = this.currentAnswers[questionId];
+    console.log('OOOOOOOO');
+    console.log(this.currentAnswers);
+    return Array.isArray(answer) ? answer : [];
+  }
 
-// Валидируем ответ пользователя
-function validateAnswer(answer: string, validation?: QuizQuestion['validation']): { isValid: boolean; errorMessage?: string } {
-  if (!validation) return { isValid: true };
+  private getUserId(): number | undefined {
+    return this.ctx.from?.id;
+  }
 
-  const { type, pattern, minLength, maxLength, min, max, errorMessage } = validation;
+  private validateAnswer(answer: string, validation?: QuizQuestion['validation']): { isValid: boolean; errorMessage?: string } {
+    if (!validation) return { isValid: true };
 
-  switch (type) {
-    case 'email':
-      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-      if (!emailRegex.test(answer)) {
-        return {
-          isValid: false,
-          errorMessage: errorMessage || 'Пожалуйста, введите корректный email адрес'
-        };
-      }
-      break;
+    const { type, pattern, minLength, maxLength, min, max, errorMessage } = validation;
 
-    case 'phone':
-      const phoneRegex = /^[\+]?[0-9\s\-\(\)]{10,}$/;
-      if (!phoneRegex.test(answer)) {
-        return {
-          isValid: false,
-          errorMessage: errorMessage || 'Пожалуйста, введите корректный номер телефона'
-        };
-      }
-      break;
-
-    case 'url':
-      try {
-        new URL(answer);
-      } catch {
-        return {
-          isValid: false,
-          errorMessage: errorMessage || 'Пожалуйста, введите корректный URL'
-        };
-      }
-      break;
-
-    case 'number':
-      const num = parseFloat(answer);
-      if (isNaN(num)) {
-        return {
-          isValid: false,
-          errorMessage: errorMessage || 'Пожалуйста, введите число'
-        };
-      }
-      if (min !== undefined && num < min) {
-        return {
-          isValid: false,
-          errorMessage: errorMessage || `Число должно быть не меньше ${min}`
-        };
-      }
-      if (max !== undefined && num > max) {
-        return {
-          isValid: false,
-          errorMessage: errorMessage || `Число должно быть не больше ${max}`
-        };
-      }
-      break;
-
-    case 'minLength':
-      if (minLength !== undefined && answer.length < minLength) {
-        return {
-          isValid: false,
-          errorMessage: errorMessage || `Ответ должен содержать минимум ${minLength} символов`
-        };
-      }
-      break;
-
-    case 'maxLength':
-      if (maxLength !== undefined && answer.length > maxLength) {
-        return {
-          isValid: false,
-          errorMessage: errorMessage || `Ответ должен содержать максимум ${maxLength} символов`
-        };
-      }
-      break;
-
-    case 'pattern':
-      if (pattern) {
-        const regex = new RegExp(pattern);
-        if (!regex.test(answer)) {
+    switch (type) {
+      case 'email':
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (!emailRegex.test(answer)) {
           return {
             isValid: false,
-            errorMessage: errorMessage || 'Ответ не соответствует требуемому формату'
+            errorMessage: errorMessage || 'Пожалуйста, введите корректный email адрес'
           };
         }
-      }
-      break;
+        break;
+
+      case 'phone':
+        const phoneRegex = /^[\+]?[0-9\s\-\(\)]{10,}$/;
+        if (!phoneRegex.test(answer)) {
+          return {
+            isValid: false,
+            errorMessage: errorMessage || 'Пожалуйста, введите корректный номер телефона'
+          };
+        }
+        break;
+
+      case 'url':
+        try {
+          new URL(answer);
+        } catch {
+          return {
+            isValid: false,
+            errorMessage: errorMessage || 'Пожалуйста, введите корректный URL'
+          };
+        }
+        break;
+
+      case 'number':
+        const num = parseFloat(answer);
+        if (isNaN(num)) {
+          return {
+            isValid: false,
+            errorMessage: errorMessage || 'Пожалуйста, введите число'
+          };
+        }
+        if (min !== undefined && num < min) {
+          return {
+            isValid: false,
+            errorMessage: errorMessage || `Число должно быть не меньше ${min}`
+          };
+        }
+        if (max !== undefined && num > max) {
+          return {
+            isValid: false,
+            errorMessage: errorMessage || `Число должно быть не больше ${max}`
+          };
+        }
+        break;
+
+      case 'minLength':
+        if (minLength !== undefined && answer.length < minLength) {
+          return {
+            isValid: false,
+            errorMessage: errorMessage || `Ответ должен содержать минимум ${minLength} символов`
+          };
+        }
+        break;
+
+      case 'maxLength':
+        if (maxLength !== undefined && answer.length > maxLength) {
+          return {
+            isValid: false,
+            errorMessage: errorMessage || `Ответ должен содержать максимум ${maxLength} символов`
+          };
+        }
+        break;
+
+      case 'pattern':
+        if (pattern) {
+          const regex = new RegExp(pattern);
+          if (!regex.test(answer)) {
+            return {
+              isValid: false,
+              errorMessage: errorMessage || 'Ответ не соответствует требуемому формату'
+            };
+          }
+        }
+        break;
+    }
+
+    return { isValid: true };
   }
 
-  return { isValid: true };
-}
-
-// чтобы продолжать квиз после паузы
-async function ensureQuizState(
-  ctx: Context,
-  loadQuizState: (userId: number) => Promise<{ step: number; answers: Record<string, any>; allowExit: boolean } | null>
-): Promise<{ step: number; answers: Record<string, any>; allowExit: boolean } | null> {
-  const userId = ctx.from?.id;
-  if (!userId) return null;
-
-  let state = await loadQuizState(userId);
-  if (!state) {
-    await ctx.reply('Не удалось восстановить состояние квиза. Начните квиз заново командой /quiz.');
-    return null;
+  private async sendMessage(text: string, options?: any): Promise<void> {
+    try {
+      const userId = this.getUserId();
+      if (!userId) return;
+      await this.ctx.api.sendMessage(userId, text, options);
+    } catch (error) {
+      console.error('Ошибка отправки сообщения:', error);
+    }
   }
-  return state;
 }

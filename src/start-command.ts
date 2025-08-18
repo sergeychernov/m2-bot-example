@@ -61,7 +61,7 @@ export function initializeStartCommand(bot: Bot) {
 
         try {
             await setMode(userId, 'quiz');
-            await startQuizWithFreshConfig(userId);
+            await startQuizWithFreshConfig(ctx);
             await ctx.answerCallbackQuery('Опросник запущен!');
         } catch (error) {
             console.error('Error starting quiz:', JSON.stringify(error));
